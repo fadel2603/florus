@@ -11,160 +11,126 @@ import {
   Platform,
   KeyboardAvoidingView,
   Dimensions,
-  StatusBar,
+  ScrollView,
   Image,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import Svg, { Defs, LinearGradient as SvgGradient, Stop, Text as SvgText } from 'react-native-svg';
-import { FontFamily } from '@/constants/fonts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import { FontFamily } from '@/constants/fonts';
+import { ANTHROPIC_API_KEY, AI_MODEL, SYSTEM_PROMPT } from '@/constants/api';
 
-const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get('window');
-const DISMISS_THRESHOLD = 80;
-const GLOW_DURATION = 2400;
-const GLOW_STAGGER = 600;
+const { height: SCREEN_H } = Dimensions.get('window');
+const DISMISS_THRESHOLD = 100;
 
-type Mode = 'voice' | 'keyboard' | 'camera' | 'photo';
 type Props = { visible: boolean; onClose: () => void };
 
-// ── Gradient title via SVG ──────────────────────────────────────────────────
-function GradientTitle() {
-  const w = SCREEN_W - 64;
-  const fontSize = 36;
-  const lineH = fontSize * 1.22;
-  const totalH = lineH * 2 + 4;
+type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  text?: string;
+  imageUri?: string;
+};
+
+// ── Waveform icon ──────────────────────────────────────────────────────────────
+function WaveformBars() {
+  const heights = [14, 30, 20, 36, 24];
   return (
-    <Svg width={w} height={totalH} style={{ overflow: 'visible' }}>
-      <Defs>
-        <SvgGradient id="shimmer" x1="0%" y1="0%" x2="100%" y2="0%">
-          <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="1" />
-          <Stop offset="35%"  stopColor="#CCCCCC" stopOpacity="1" />
-          <Stop offset="65%"  stopColor="#CCCCCC" stopOpacity="1" />
-          <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="1" />
-        </SvgGradient>
-      </Defs>
-      <SvgText x={w / 2} y={lineH} textAnchor="middle"
-        fill="url(#shimmer)" fontSize={fontSize} fontFamily="GasoekOne_400Regular">
-        Comment puis-je
-      </SvgText>
-      <SvgText x={w / 2} y={lineH * 2 + 4} textAnchor="middle"
-        fill="url(#shimmer)" fontSize={fontSize} fontFamily="GasoekOne_400Regular">
-        {`t\u2019aider\u00A0?`}
-      </SvgText>
-    </Svg>
+    <View style={waveStyles.row}>
+      {heights.map((h, i) => (
+        <View key={i} style={[waveStyles.bar, { height: h }]} />
+      ))}
+    </View>
   );
 }
 
-// ── One animated bottom-glow wave layer ────────────────────────────────────
-// Each layer is a gradient anchored at the bottom at a different height;
-// opacity pulses in/out to simulate a wave propagating upward.
-function GlowLayer({
-  opacity,
-  layerHeight,
-  peakColor,
-}: {
-  opacity: Animated.Value;
-  layerHeight: number;
-  peakColor: string;
-}) {
+const waveStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  bar: { width: 3.5, borderRadius: 2, backgroundColor: 'rgba(60,60,67,0.45)' },
+});
+
+// ── Typing dots ────────────────────────────────────────────────────────────────
+function TypingDots() {
+  const dots = [useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current];
+
+  useEffect(() => {
+    const animations = dots.map((dot, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 150),
+          Animated.timing(dot, { toValue: 1, duration: 300, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0, duration: 300, useNativeDriver: true }),
+          Animated.delay(450 - i * 150),
+        ])
+      )
+    );
+    animations.forEach(a => a.start());
+    return () => animations.forEach(a => a.stop());
+  }, []);
+
   return (
-    <Animated.View
-      style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: layerHeight, opacity }}
-      pointerEvents="none"
-    >
-      <LinearGradient
-        colors={['transparent', peakColor]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-    </Animated.View>
+    <View style={dotStyles.bubble}>
+      <View style={dotStyles.row}>
+        {dots.map((dot, i) => (
+          <Animated.View
+            key={i}
+            style={[dotStyles.dot, { opacity: dot, transform: [{ translateY: dot.interpolate({ inputRange: [0, 1], outputRange: [0, -4] }) }] }]}
+          />
+        ))}
+      </View>
+    </View>
   );
 }
+
+const dotStyles = StyleSheet.create({
+  bubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(30,30,30,0.75)',
+    borderRadius: 18,
+    borderBottomLeftRadius: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 8,
+  },
+  row: { flexDirection: 'row', gap: 5, alignItems: 'center' },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.8)' },
+});
 
 export default function AISheet({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
-
-  // Sheet slide-up
   const translateY = useRef(new Animated.Value(SCREEN_H)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-
-  // Bottom-glow wave layers (4 staggered pulses)
-  const glow0 = useRef(new Animated.Value(0)).current;
-  const glow1 = useRef(new Animated.Value(0)).current;
-  const glow2 = useRef(new Animated.Value(0)).current;
-  const glow3 = useRef(new Animated.Value(0)).current;
-  const glows = [glow0, glow1, glow2, glow3];
-
-  const [permission, requestPermission] = useCameraPermissions();
-  const [mode, setMode] = useState<Mode>('voice');
   const [input, setInput] = useState('');
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const cameraRef = useRef<CameraView>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
+  const textInputRef = useRef<TextInput>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
-  // Slide-in on open
   useEffect(() => {
     if (visible) {
       translateY.setValue(SCREEN_H);
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          damping: 26,
-          stiffness: 220,
-          mass: 1,
-        }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-      ]).start();
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 28,
+        stiffness: 200,
+        mass: 1,
+      }).start();
     }
   }, [visible]);
 
-  // Bottom glow pulse — only animates in voice mode
-  useEffect(() => {
-    const loops: Animated.CompositeAnimation[] = [];
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    if (mode === 'voice') {
-      glows.forEach((g, i) => {
-        g.setValue(0);
-        const t = setTimeout(() => {
-          const loop = Animated.loop(
-            Animated.sequence([
-              Animated.timing(g, {
-                toValue: 1,
-                duration: GLOW_DURATION * 0.55,
-                useNativeDriver: true,
-              }),
-              Animated.timing(g, {
-                toValue: 0,
-                duration: GLOW_DURATION * 0.45,
-                useNativeDriver: true,
-              }),
-            ])
-          );
-          loops.push(loop);
-          loop.start();
-        }, i * GLOW_STAGGER);
-        timers.push(t);
-      });
-    }
-
-    return () => {
-      timers.forEach(clearTimeout);
-      loops.forEach(l => l.stop());
-    };
-  }, [mode]);
-
   const dismiss = () => {
-    Animated.parallel([
-      Animated.timing(translateY, { toValue: SCREEN_H, duration: 340, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 260, useNativeDriver: true }),
-    ]).start(() => {
-      setMode('voice');
+    Animated.timing(translateY, {
+      toValue: SCREEN_H,
+      duration: 320,
+      useNativeDriver: true,
+    }).start(() => {
       setInput('');
-      setPhotoUri(null);
+      setMessages([]);
+      setPendingImage(null);
       onClose();
     });
   };
@@ -176,329 +142,424 @@ export default function AISheet({ visible, onClose }: Props) {
       onPanResponderMove: (_, g) => { if (g.dy > 0) translateY.setValue(g.dy); },
       onPanResponderRelease: (_, g) => {
         if (g.dy > DISMISS_THRESHOLD || g.vy > 0.5) dismiss();
-        else Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 26, stiffness: 220 }).start();
+        else Animated.spring(translateY, {
+          toValue: 0, useNativeDriver: true, damping: 26, stiffness: 220,
+        }).start();
       },
     })
   ).current;
 
-  const handleCameraPress = async () => {
-    if (!permission?.granted) {
-      const result = await requestPermission();
-      if (!result.granted) return;
-    }
-    setMode('camera');
+  const scrollToBottom = () => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
   };
 
-  const handleCapture = async () => {
-    if (!cameraRef.current) return;
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text && !pendingImage) return;
+
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      text: text || undefined,
+      imageUri: pendingImage || undefined,
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
+    setPendingImage(null);
+    setLoading(true);
+    scrollToBottom();
+
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
-      if (photo?.uri) {
-        setPhotoUri(photo.uri);
-        setMode('photo');
+      const contentParts: any[] = [];
+
+      if (userMsg.imageUri) {
+        // Fetch the image as base64
+        const response = await fetch(userMsg.imageUri);
+        const blob = await response.blob();
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]);
+          };
+          reader.readAsDataURL(blob);
+        });
+        contentParts.push({
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
+        });
       }
-    } catch {}
+
+      if (text) {
+        contentParts.push({ type: 'text', text });
+      } else if (userMsg.imageUri) {
+        contentParts.push({ type: 'text', text: "Qu'est-ce que c'est ?" });
+      }
+
+      const apiMessages = [{ role: 'user', content: contentParts }];
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: AI_MODEL,
+          max_tokens: 1024,
+          system: SYSTEM_PROMPT,
+          messages: apiMessages,
+        }),
+      });
+
+      const data = await res.json();
+      const aiText = data?.content?.[0]?.text ?? "Désolé, je n'ai pas pu répondre.";
+
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        text: aiText,
+      }]);
+    } catch {
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        text: "Erreur de connexion. Réessaie.",
+      }]);
+    } finally {
+      setLoading(false);
+      scrollToBottom();
+    }
   };
+
+  const handleCamera = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+      allowsEditing: false,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setPendingImage(result.assets[0].uri);
+      setTimeout(() => textInputRef.current?.focus(), 200);
+    }
+  };
+
+  const handleMic = () => {
+    textInputRef.current?.focus();
+  };
+
+  const hasMessages = messages.length > 0 || loading;
 
   if (!visible) return null;
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={dismiss} statusBarTranslucent>
-      <StatusBar barStyle="light-content" />
+      <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateY }] }]}>
 
-      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} pointerEvents="none" />
+        {/* Frosted glass background */}
+        <BlurView
+          intensity={88}
+          tint="systemUltraThinMaterialLight"
+          style={StyleSheet.absoluteFill}
+        />
 
-      <Animated.View style={[styles.root, { transform: [{ translateY }] }]}>
-        {/* Pure black base */}
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }]} />
+        {/* Green radial glow */}
+        <LinearGradient
+          colors={['transparent', 'rgba(181,241,91,0.18)', 'rgba(181,241,91,0.36)']}
+          locations={[0, 0.45, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.greenGlow}
+          pointerEvents="none"
+        />
 
-        {/* Base static glow (always visible) */}
-        <View style={styles.baseGlow} pointerEvents="none">
-          <LinearGradient
-            colors={['transparent', 'rgba(181,241,91,0.06)', 'rgba(181,241,91,0.18)']}
-            locations={[0, 0.55, 1]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
+        {/* Drag handle */}
+        <View
+          {...panResponder.panHandlers}
+          style={[styles.dragZone, { paddingTop: insets.top + 6 }]}
+        >
+          <View style={styles.handle} />
         </View>
 
-        {/* Animated pulse wave layers — staggered, different heights */}
-        <GlowLayer opacity={glow0} layerHeight={SCREEN_H * 0.38} peakColor="rgba(181,241,91,0.32)" />
-        <GlowLayer opacity={glow1} layerHeight={SCREEN_H * 0.50} peakColor="rgba(181,241,91,0.24)" />
-        <GlowLayer opacity={glow2} layerHeight={SCREEN_H * 0.62} peakColor="rgba(181,241,91,0.18)" />
-        <GlowLayer opacity={glow3} layerHeight={SCREEN_H * 0.72} peakColor="rgba(181,241,91,0.12)" />
+        {/* Close button */}
+        <TouchableOpacity
+          style={[styles.closeBtn, { top: insets.top + 8 }]}
+          onPress={dismiss}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="close" size={16} color="rgba(60,60,67,0.7)" />
+        </TouchableOpacity>
 
-        {/* ── CAMERA STATE ── */}
-        {mode === 'camera' && (
-          <View style={StyleSheet.absoluteFill}>
-            <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
-            <TouchableOpacity
-              style={[styles.closeBtn, { top: insets.top + 12 }]}
-              onPress={() => setMode('voice')}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="close" size={18} color="rgba(255,255,255,0.85)" />
-            </TouchableOpacity>
-            <View style={[styles.cameraBottom, { paddingBottom: insets.bottom + 36 }]}>
-              <TouchableOpacity onPress={handleCapture} activeOpacity={0.85}>
-                <View style={styles.captureBtnRing}>
-                  <View style={styles.captureBtnCore} />
-                </View>
-              </TouchableOpacity>
-            </View>
+        {/* Hero (hidden when messages exist) */}
+        {!hasMessages && (
+          <View style={styles.heroArea}>
+            <Text style={styles.greeting}>Bonjour Fadel</Text>
+            <Text style={styles.heroWrap}>
+              <Text style={styles.heroBold}>Comment </Text>
+              <Text style={styles.heroLight}>puis-je{'\n'}t'aider ?</Text>
+            </Text>
           </View>
         )}
 
-        {/* ── VOICE / KEYBOARD / PHOTO STATES ── */}
-        {mode !== 'camera' && (
-          <>
-            {/* Photo background */}
-            {mode === 'photo' && photoUri && (
-              <>
-                <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-                <View style={[StyleSheet.absoluteFill, styles.photoDim]} />
-              </>
-            )}
-
-            {/* Drag handle */}
-            <View {...panResponder.panHandlers} style={styles.dragZone}>
-              <View style={styles.handle} />
-            </View>
-
-            {/* Close */}
-            <TouchableOpacity
-              style={[styles.closeBtn, { top: insets.top + 8 }]}
-              onPress={dismiss}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="close" size={18} color="rgba(255,255,255,0.6)" />
-            </TouchableOpacity>
-
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={styles.kav}
-            >
-              {/* ── WELCOME TEXT (replaces orb) ── */}
-              <View style={styles.heroArea}>
-                <Text style={styles.greeting}>
-                  {mode === 'photo' ? 'À propos de cette plante' : 'Bonjour Fadel'}
-                </Text>
-                <GradientTitle />
-              </View>
-
-              {/* Status text */}
-              <Text style={styles.statusText}>
-                {mode === 'voice'
-                  ? 'Vous pouvez commencer à parler'
-                  : mode === 'photo'
-                  ? 'Posez votre question ci-dessous'
-                  : ''}
-              </Text>
-
-              {/* Text input — keyboard + photo modes */}
-              {(mode === 'keyboard' || mode === 'photo') && (
-                <View style={styles.inputRow}>
-                  <TextInput
-                    style={styles.inputField}
-                    value={input}
-                    onChangeText={setInput}
-                    placeholder="Une question ?"
-                    placeholderTextColor="rgba(255,255,255,0.38)"
-                    multiline
-                    autoFocus={mode === 'keyboard'}
-                    selectionColor="#B5F15B"
-                  />
-                  {input.trim() ? (
-                    <TouchableOpacity style={styles.sendBtn} activeOpacity={0.8}>
-                      <Ionicons name="arrow-up" size={16} color="#000" />
-                    </TouchableOpacity>
-                  ) : null}
+        {/* Chat messages */}
+        {hasMessages && (
+          <ScrollView
+            ref={scrollRef}
+            style={styles.chatScroll}
+            contentContainerStyle={styles.chatContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {messages.map(msg => (
+              <View key={msg.id} style={msg.role === 'user' ? styles.userRow : styles.aiRow}>
+                {msg.role === 'assistant' && (
+                  <View style={styles.aiAvatar}>
+                    <Ionicons name="sparkles" size={14} color="#B5F15B" />
+                  </View>
+                )}
+                <View style={[styles.bubble, msg.role === 'user' ? styles.userBubble : styles.aiBubble]}>
+                  {msg.imageUri && (
+                    <Image source={{ uri: msg.imageUri }} style={styles.photoThumb} />
+                  )}
+                  {msg.text && (
+                    <Text style={msg.role === 'user' ? styles.userText : styles.aiText}>
+                      {msg.text}
+                    </Text>
+                  )}
                 </View>
-              )}
+              </View>
+            ))}
+            {loading && <TypingDots />}
+          </ScrollView>
+        )}
 
-              {/* Bottom action buttons */}
-              <View style={[styles.bottomActions, { paddingBottom: insets.bottom + 28 }]}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, mode === 'keyboard' && styles.actionBtnActive]}
-                  onPress={() => setMode(mode === 'keyboard' ? 'voice' : 'keyboard')}
-                  activeOpacity={0.75}
-                >
-                  {/* QWERTY laptop-style keyboard icon */}
-                  <Ionicons name="keyboard-outline" size={26} color="#ffffff" />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, mode === 'photo' && styles.actionBtnActive]}
-                  onPress={handleCameraPress}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name="camera-outline" size={26} color="#ffffff" />
+        {/* Input bar */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.inputOuter, { paddingBottom: insets.bottom + 16 }]}>
+            {/* Pending image preview */}
+            {pendingImage && (
+              <View style={styles.pendingImageRow}>
+                <Image source={{ uri: pendingImage }} style={styles.pendingThumb} />
+                <TouchableOpacity onPress={() => setPendingImage(null)} style={styles.removePending}>
+                  <Ionicons name="close-circle" size={18} color="rgba(60,60,67,0.6)" />
                 </TouchableOpacity>
               </View>
-            </KeyboardAvoidingView>
-          </>
-        )}
+            )}
+            <View style={styles.inputPill}>
+              <TextInput
+                ref={textInputRef}
+                style={styles.inputField}
+                value={input}
+                onChangeText={setInput}
+                placeholder="Une question ?"
+                placeholderTextColor="rgba(60,60,67,0.38)"
+                selectionColor="#5B9E3B"
+                returnKeyType="send"
+                onSubmitEditing={handleSend}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+              />
+              <View style={styles.inputIcons}>
+                {input.trim() || pendingImage ? (
+                  <TouchableOpacity onPress={handleSend} style={styles.sendBtn} activeOpacity={0.8}>
+                    <Ionicons name="arrow-up" size={20} color="#1C1C1E" />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity onPress={handleMic} activeOpacity={0.7}>
+                    <WaveformBars />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={handleCamera} activeOpacity={0.7}>
+                  <Ionicons name="camera-outline" size={30} color="rgba(60,60,67,0.50)" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+
       </Animated.View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  root: {
-    position: 'absolute',
-    inset: 0,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    overflow: 'hidden',
-  },
 
-  /* Base glow (always on) */
-  baseGlow: {
+  greenGlow: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: SCREEN_H * 0.45,
+    height: SCREEN_H * 0.42,
   },
 
-  /* Drag handle */
   dragZone: {
     alignItems: 'center',
-    paddingTop: 10,
-    paddingBottom: 6,
+    paddingBottom: 4,
   },
   handle: {
-    width: 36,
-    height: 5,
-    borderRadius: 100,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    width: 36, height: 5, borderRadius: 100,
+    backgroundColor: 'rgba(60,60,67,0.18)',
   },
 
-  /* Close button */
   closeBtn: {
     position: 'absolute',
-    left: 20,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.09)',
+    left: 18,
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.75)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.10,
+    shadowRadius: 4,
+    elevation: 2,
     zIndex: 10,
   },
 
-  kav: { flex: 1 },
-
-  /* Hero text area (replaces orb) */
   heroArea: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    gap: 14,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 26,
+    paddingBottom: 44,
   },
   greeting: {
     fontFamily: FontFamily.bodyRegular,
-    fontSize: 17,
-    color: 'rgba(255,255,255,0.45)',
-    textAlign: 'center',
+    fontSize: 15,
+    color: 'rgba(60,60,67,0.55)',
+    marginBottom: 8,
+  },
+  heroWrap: {},
+  heroBold: {
+    fontFamily: FontFamily.headerBold,
+    fontSize: 38,
+    lineHeight: 46,
+    color: '#1C1C1E',
+  },
+  heroLight: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 38,
+    lineHeight: 46,
+    color: 'rgba(60,60,67,0.55)',
   },
 
-  /* Status text — more prominent */
-  statusText: {
-    fontFamily: FontFamily.calendarMedium,
-    fontSize: 18,
-    color: 'rgba(255,255,255,0.75)',
-    textAlign: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 32,
+  chatScroll: {
+    flex: 1,
+    marginTop: 8,
+  },
+  chatContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
 
-  /* Text input */
-  inputRow: {
+  userRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 8,
+  },
+  aiRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 8,
+    gap: 8,
+  },
+  aiAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(30,30,30,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bubble: {
+    maxWidth: '78%',
+    borderRadius: 18,
+    padding: 12,
+    paddingHorizontal: 16,
+  },
+  userBubble: {
+    backgroundColor: '#B5F15B',
+    borderBottomRightRadius: 4,
+  },
+  aiBubble: {
+    backgroundColor: 'rgba(30,30,30,0.75)',
+    borderBottomLeftRadius: 4,
+  },
+  userText: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 15,
+    color: '#1C1C1E',
+    lineHeight: 21,
+  },
+  aiText: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 15,
+    color: '#FFFFFF',
+    lineHeight: 21,
+  },
+  photoThumb: {
+    width: 200,
+    height: 150,
+    borderRadius: 12,
+    marginBottom: 6,
+  },
+
+  inputOuter: {
+    paddingHorizontal: 14,
+  },
+  pendingImageRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: 'rgba(181,241,91,0.10)',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  pendingThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+  },
+  removePending: {
+    marginLeft: 6,
+  },
+  inputPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 58,
     borderRadius: 100,
-    paddingLeft: 22,
-    paddingRight: 10,
-    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.60)',
     borderWidth: 1,
-    borderColor: 'rgba(181,241,91,0.22)',
+    borderColor: 'rgba(255,255,255,0.80)',
+    paddingLeft: 22,
+    paddingRight: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   inputField: {
     flex: 1,
-    fontFamily: FontFamily.calendarMedium,
+    fontFamily: FontFamily.bodyRegular,
     fontSize: 16,
-    color: 'rgba(255,255,255,0.9)',
-    maxHeight: 80,
+    color: '#1C1C1E',
     paddingTop: 0,
-    paddingRight: 8,
+    paddingBottom: 0,
+  },
+  inputIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
   },
   sendBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: '#B5F15B',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  /* Bottom action buttons — 72px */
-  bottomActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 24,
-    paddingTop: 8,
-  },
-  actionBtn: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(255,255,255,0.09)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBtnActive: {
-    backgroundColor: 'rgba(181,241,91,0.18)',
-    borderColor: 'rgba(181,241,91,0.4)',
-  },
-
-  /* Photo dim */
-  photoDim: {
-    backgroundColor: 'rgba(0,0,0,0.52)',
-  },
-
-  /* Camera */
-  cameraBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  captureBtnRing: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    borderWidth: 3,
-    borderColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  captureBtnCore: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#ffffff',
   },
 });

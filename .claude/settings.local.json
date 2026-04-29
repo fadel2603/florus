@@ -9,7 +9,10 @@
       "Bash(awk '{print $2}')",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d,indent=2\\)\\)\")",
       "Bash(python3 -c \" import sys, json for line in sys.stdin: line = line.strip\\(\\) if not line: continue try: d = json.loads\\(line\\) content = d.get\\('result',{}\\).get\\('content',[]\\) for c in content: print\\(c.get\\('text',''\\)\\) except: pass \")",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(python3 *)",
+      "Bash(git checkout *)",
+      "mcp__plugin_figma_figma__use_figma"
     ]
   }
 }

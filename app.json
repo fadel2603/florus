@@ -32,11 +32,22 @@
       "expo-font",
       [
         "expo-camera",
-        { "cameraPermission": "Planta a besoin de la caméra pour identifier vos plantes." }
+        {
+          "cameraPermission": "Planta a besoin de la caméra pour identifier vos plantes."
+        }
       ],
       [
         "expo-image-picker",
-        { "photosPermission": "Planta accède à vos photos pour ajouter vos plantes." }
+        {
+          "photosPermission": "Planta accède à vos photos pour ajouter vos plantes."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Planta utilise le micro pour transcrire vos questions.",
+          "speechRecognitionPermission": "Planta utilise la reconnaissance vocale pour transcrire vos questions."
+        }
       ]
     ]
   }
