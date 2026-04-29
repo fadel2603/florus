@@ -17,6 +17,7 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { FontFamily } from '@/constants/fonts';
@@ -265,12 +266,12 @@ export default function AISheet({ visible, onClose }: Props) {
           style={StyleSheet.absoluteFill}
         />
 
-        {/* Green radial glow */}
+        {/* Green radial glow — LinearGradient from bottom, offset left */}
         <LinearGradient
-          colors={['transparent', 'rgba(181,241,91,0.18)', 'rgba(181,241,91,0.36)']}
-          locations={[0, 0.45, 1]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
+          colors={['transparent', 'rgba(90,180,20,0.22)', 'rgba(90,180,20,0.60)']}
+          locations={[0, 0.42, 1]}
+          start={{ x: 0.35, y: 0 }}
+          end={{ x: 0.35, y: 1 }}
           style={styles.greenGlow}
           pointerEvents="none"
         />
@@ -295,11 +296,23 @@ export default function AISheet({ visible, onClose }: Props) {
         {/* Hero (hidden when messages exist) */}
         {!hasMessages && (
           <View style={styles.heroArea}>
-            <Text style={styles.greeting}>Bonjour Fadel</Text>
-            <Text style={styles.heroWrap}>
-              <Text style={styles.heroBold}>Comment </Text>
-              <Text style={styles.heroLight}>puis-je{'\n'}t'aider ?</Text>
-            </Text>
+            <View style={styles.greetingBlock}>
+              <Text style={styles.greeting}>Bonjour Fadel</Text>
+              <Svg width={311} height={105}>
+                <Defs>
+                  <SvgLinearGradient id="heroGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <Stop offset="0%" stopColor="#000000" />
+                    <Stop offset="100%" stopColor="#8F8F8F" />
+                  </SvgLinearGradient>
+                </Defs>
+                <SvgText fill="url(#heroGrad)" fontSize="39" fontFamily="Gabarito" fontWeight="500" textAnchor="middle" x="155" y="44">
+                  Comment puis-je
+                </SvgText>
+                <SvgText fill="url(#heroGrad)" fontSize="39" fontFamily="Gabarito" fontWeight="500" textAnchor="middle" x="155" y="96">
+                  t'aider ?
+                </SvgText>
+              </Svg>
+            </View>
           </View>
         )}
 
@@ -356,7 +369,7 @@ export default function AISheet({ visible, onClose }: Props) {
                 value={input}
                 onChangeText={setInput}
                 placeholder="Une question ?"
-                placeholderTextColor="rgba(60,60,67,0.38)"
+                placeholderTextColor="rgba(255,255,255,0.6)"
                 selectionColor="#5B9E3B"
                 returnKeyType="send"
                 onSubmitEditing={handleSend}
@@ -393,7 +406,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: SCREEN_H * 0.42,
+    height: SCREEN_H * 0.58,
   },
 
   dragZone: {
@@ -423,27 +436,18 @@ const styles = StyleSheet.create({
   heroArea: {
     flex: 1,
     justifyContent: 'flex-end',
-    paddingHorizontal: 26,
-    paddingBottom: 44,
+    alignItems: 'center',
+    paddingBottom: 36,
+  },
+  greetingBlock: {
+    alignItems: 'center',
+    gap: 7,
   },
   greeting: {
     fontFamily: FontFamily.bodyRegular,
-    fontSize: 15,
-    color: 'rgba(60,60,67,0.55)',
-    marginBottom: 8,
-  },
-  heroWrap: {},
-  heroBold: {
-    fontFamily: FontFamily.headerBold,
-    fontSize: 38,
-    lineHeight: 46,
-    color: '#1C1C1E',
-  },
-  heroLight: {
-    fontFamily: FontFamily.bodyRegular,
-    fontSize: 38,
-    lineHeight: 46,
-    color: 'rgba(60,60,67,0.55)',
+    fontSize: 19,
+    color: 'rgba(0,0,0,0.6)',
+    textAlign: 'center',
   },
 
   chatScroll: {
@@ -528,18 +532,11 @@ const styles = StyleSheet.create({
   inputPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 58,
+    height: 68,
     borderRadius: 100,
-    backgroundColor: 'rgba(255,255,255,0.60)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.80)',
-    paddingLeft: 22,
-    paddingRight: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    paddingLeft: 32,
+    paddingRight: 24,
   },
   inputField: {
     flex: 1,
