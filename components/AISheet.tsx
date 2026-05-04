@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
+  Text,
+  Image,
   StyleSheet,
   Animated,
   PanResponder,
@@ -9,6 +11,7 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
+import { FontFamily } from '@/constants/fonts';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,9 +26,22 @@ import ChatInput from '@/components/ai/ChatInput';
 const { height: SCREEN_H } = Dimensions.get('window');
 const DISMISS_THRESHOLD = 100;
 
-type Props = { visible: boolean; onClose: () => void };
+type PlantContext = {
+  name: string;
+  species: string;
+  image: string;
+  waterFrequency?: string;
+  location?: 'indoor' | 'outdoor';
+};
 
-export default function AISheet({ visible, onClose }: Props) {
+type Props = {
+  visible: boolean;
+  onClose: () => void;
+  plantContext?: PlantContext;
+  onOpenCamera?: (onPhoto: (uri: string) => void) => void;
+};
+
+export default function AISheet({ visible, onClose, plantContext, onOpenCamera }: Props) {
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(SCREEN_H)).current;
   const [input, setInput] = useState('');
@@ -149,7 +165,9 @@ export default function AISheet({ visible, onClose }: Props) {
         body: JSON.stringify({
           model: AI_MODEL,
           max_tokens: 1024,
-          system: SYSTEM_PROMPT,
+          system: plantContext
+            ? `${SYSTEM_PROMPT}\n\nContexte: L'utilisateur consulte sa plante "${plantContext.name}" (${plantContext.species})${plantContext.location ? `, emplacement ${plantContext.location === 'outdoor' ? 'extérieur' : 'intérieur'}` : ''}${plantContext.waterFrequency ? `, arrosage : ${plantContext.waterFrequency}` : ''}. Réponds de façon ciblée sur cette plante.`
+            : SYSTEM_PROMPT,
           messages: [
             ...priorMessages,
             { role: 'user', content: currentContent },
@@ -181,10 +199,17 @@ export default function AISheet({ visible, onClose }: Props) {
   };
 
   const handleCamera = async () => {
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
-    if (!result.canceled && result.assets[0]) {
-      setPendingImage(result.assets[0].uri);
-      setTimeout(() => textInputRef.current?.focus(), 200);
+    if (onOpenCamera) {
+      onOpenCamera((uri: string) => {
+        setPendingImage(uri);
+        setTimeout(() => textInputRef.current?.focus(), 200);
+      });
+    } else {
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
+      if (!result.canceled && result.assets[0]) {
+        setPendingImage(result.assets[0].uri);
+        setTimeout(() => textInputRef.current?.focus(), 200);
+      }
     }
   };
 
@@ -214,20 +239,40 @@ export default function AISheet({ visible, onClose }: Props) {
           <Ionicons name="close" size={16} color="rgba(60,60,67,0.7)" />
         </TouchableOpacity>
 
-        {!hasMessages && <AIHero />}
+        <View style={styles.contentArea}>
+          {plantContext && (
+            <View style={styles.plantBannerWrap}>
+              <View style={styles.plantBanner}>
+                <Image source={{ uri: plantContext.image }} style={styles.plantThumb} />
+                <View style={styles.plantBannerText}>
+                  <Text style={styles.plantBannerName}>{plantContext.name}</Text>
+                  <Text style={styles.plantBannerSpecies}>{plantContext.species}</Text>
+                  {(plantContext.waterFrequency || plantContext.location) && (
+                    <Text style={styles.plantBannerMeta}>
+                      {plantContext.location === 'outdoor' ? '🌿 Extérieur' : '🏠 Intérieur'}
+                      {plantContext.waterFrequency ? `  ·  💧 ${plantContext.waterFrequency}` : ''}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
 
-        {hasMessages && (
-          <ScrollView
-            ref={scrollRef}
-            style={styles.chatScroll}
-            contentContainerStyle={styles.chatContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {messages.map(msg => <ChatBubble key={msg.id} message={msg} />)}
-            {loading && <TypingDots />}
-          </ScrollView>
-        )}
+          {!hasMessages && !plantContext && <AIHero />}
+
+          {hasMessages && (
+            <ScrollView
+              ref={scrollRef}
+              style={styles.chatScroll}
+              contentContainerStyle={styles.chatContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {messages.map(msg => <ChatBubble key={msg.id} message={msg} />)}
+              {loading && <TypingDots />}
+            </ScrollView>
+          )}
+        </View>
 
         <ChatInput
           input={input}
@@ -239,6 +284,7 @@ export default function AISheet({ visible, onClose }: Props) {
           onMic={() => textInputRef.current?.focus()}
           inputRef={textInputRef}
           paddingBottom={insets.bottom + 16}
+          placeholder={plantContext ? `Une question sur ${plantContext.name} ?` : 'Une question ?'}
         />
 
       </Animated.View>
@@ -280,6 +326,9 @@ const styles = StyleSheet.create({
     elevation: 2,
     zIndex: 10,
   },
+  contentArea: {
+    flex: 1,
+  },
   chatScroll: {
     flex: 1,
     marginTop: 8,
@@ -288,5 +337,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
+  },
+
+  plantBannerWrap: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  plantBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.90)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+  },
+  plantThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  plantBannerText: {
+    flex: 1,
+    gap: 2,
+  },
+  plantBannerName: {
+    fontFamily: FontFamily.headerBold,
+    fontSize: 16,
+    color: '#1a1a1a',
+  },
+  plantBannerSpecies: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 12,
+    color: 'rgba(0,0,0,0.45)',
+    fontStyle: 'italic',
+  },
+  plantBannerMeta: {
+    fontFamily: FontFamily.calendarMedium,
+    fontSize: 11,
+    color: 'rgba(0,0,0,0.38)',
+    marginTop: 3,
   },
 });

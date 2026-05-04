@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+  Animated,
+} from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,69 +29,140 @@ const NAV_ROUTES: Route[] = [
   { name: 'plants', label: 'Plantes', icon: 'leaf-outline',  iconFocused: 'leaf' },
 ];
 
-const SHADOW = {
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 8 },
-  shadowOpacity: 0.15,
-  shadowRadius: 28,
-  elevation: 14,
-} as const;
-
-const PILL_W  = 180;
-const PILL_H  = 60;
-const AI_SIZE = 60;
-const RADIUS  = 100;
-const BORDER  = 'rgba(255,255,255,0.80)';
+const PILL_W     = 180;
+const PILL_H     = 60;
+const AI_SIZE    = 60;
+const TAB_W      = PILL_W / NAV_ROUTES.length; // 90 px per slot
+const IND_W      = TAB_W - 8;  // 82 px
+const IND_H      = PILL_H - 8; // 52 px
 
 export default function LiquidGlassTabBar({ state, navigation }: BottomTabBarProps) {
-  const insets = useSafeAreaInsets();
-  const active = state.routes[state.index]?.name;
-  const go = (name: string) => navigation.navigate(name);
+  const insets    = useSafeAreaInsets();
+  const active    = state.routes[state.index]?.name ?? 'index';
   const [aiOpen, setAiOpen] = useState(false);
 
-  // Breathing glow (shadow scale via opacity of a glow ring)
-  const glowOpacity = useRef(new Animated.Value(0.4)).current;
+  // ── Mount: slide up + fade in ──────────────────────────────────────────
+  const mountY   = useRef(new Animated.Value(28)).current;
+  const mountOp  = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowOpacity, { toValue: 0.85, duration: 1600, useNativeDriver: true }),
-        Animated.timing(glowOpacity, { toValue: 0.4, duration: 1600, useNativeDriver: true }),
-      ])
-    ).start();
+    Animated.parallel([
+      Animated.spring(mountY, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 18,
+        stiffness: 180,
+        mass: 0.9,
+      }),
+      Animated.timing(mountOp, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
+
+  // ── Indicator: slides between tabs ────────────────────────────────────
+  const initIdx    = Math.max(0, NAV_ROUTES.findIndex(r => r.name === active));
+  const indAnim    = useRef(new Animated.Value(initIdx)).current;
+
+  useEffect(() => {
+    const idx = NAV_ROUTES.findIndex(r => r.name === active);
+    if (idx < 0) return;
+    Animated.spring(indAnim, {
+      toValue: idx,
+      useNativeDriver: true,
+      damping: 24,
+      stiffness: 400,
+      mass: 0.65,
+    }).start();
+  }, [active]);
+
+  const indTranslateX = indAnim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: [4, TAB_W + 4],
+  });
+
+  // ── AI button: bounce on press ────────────────────────────────────────
+  const aiScale = useRef(new Animated.Value(1)).current;
+
+  const pressAI = () => {
+    Animated.sequence([
+      Animated.spring(aiScale, {
+        toValue: 0.86,
+        useNativeDriver: true,
+        damping: 14,
+        stiffness: 500,
+        mass: 0.5,
+      }),
+      Animated.spring(aiScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        damping: 10,
+        stiffness: 280,
+        mass: 0.7,
+      }),
+    ]).start();
+    setAiOpen(true);
+  };
+
+  const go = (name: string) => navigation.navigate(name);
 
   return (
     <>
-      <View
-        style={[styles.root, { bottom: insets.bottom + 16 }]}
+      <Animated.View
+        style={[
+          styles.root,
+          { bottom: insets.bottom + 12 },
+          { transform: [{ translateY: mountY }], opacity: mountOp },
+        ]}
         pointerEvents="box-none"
       >
-        {/* ── PILL GAUCHE ── */}
-        <View style={[styles.pillShadow, SHADOW]}>
+        {/* ── LEFT: Tab group pill ─────────────────────────────────────── */}
+        {/* Outer: shadow only */}
+        <View style={styles.pillShadow}>
+          {/* Inner: overflow:hidden for BlurView */}
           <View style={styles.pillClip}>
-            <BlurView intensity={95} tint="light" style={StyleSheet.absoluteFill} />
-            <View style={[StyleSheet.absoluteFill, styles.glassFill]} />
-            <View style={styles.pillInner}>
+            <BlurView
+              intensity={90}
+              tint="light"
+              style={StyleSheet.absoluteFill}
+            />
+            {/* Frost tint */}
+            <View style={[StyleSheet.absoluteFill, styles.pillFrost]} />
+
+            {/* Sliding indicator */}
+            <Animated.View
+              style={[
+                styles.indicator,
+                { transform: [{ translateX: indTranslateX }] },
+              ]}
+              pointerEvents="none"
+            />
+
+            {/* Tab rows */}
+            <View style={styles.pillRow}>
               {NAV_ROUTES.map(route => {
                 const focused = active === route.name;
                 return (
                   <TouchableOpacity
                     key={route.name}
                     onPress={() => go(route.name)}
-                    activeOpacity={0.7}
+                    activeOpacity={0.85}
                     style={styles.tabTouch}
                   >
-                    <View style={[styles.tabItem, focused && styles.tabItemActive]}>
-                      <Ionicons
-                        name={focused ? route.iconFocused : route.icon}
-                        size={22}
-                        color={focused ? '#000000' : '#999999'}
-                      />
-                      <Text style={focused ? styles.labelActive : styles.labelInactive}>
-                        {route.label}
-                      </Text>
-                    </View>
+                    <Ionicons
+                      name={focused ? route.iconFocused : route.icon}
+                      size={21}
+                      color={focused ? '#ffffff' : '#7a7a7a'}
+                    />
+                    <Text
+                      style={
+                        focused ? styles.labelFocused : styles.labelDefault
+                      }
+                    >
+                      {route.label}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -92,26 +170,34 @@ export default function LiquidGlassTabBar({ state, navigation }: BottomTabBarPro
           </View>
         </View>
 
-        {/* ── BOUTON IA ── */}
-        <View style={styles.aiWrapper}>
-          {/* Breathing glow ring */}
-          <Animated.View style={[styles.glowRing, { opacity: glowOpacity }]} />
-
-          <TouchableOpacity
-            onPress={() => setAiOpen(true)}
-            activeOpacity={0.85}
-            style={styles.aiBtn}
+        {/* ── RIGHT: Isolated AI glass bubble ──────────────────────────── */}
+        {/* Outer: shadow only */}
+        <View style={styles.aiShadow}>
+          {/* Inner: overflow:hidden for BlurView + bounce scale */}
+          <Animated.View
+            style={[styles.aiClip, { transform: [{ scale: aiScale }] }]}
           >
+            <BlurView intensity={85} tint="light" style={StyleSheet.absoluteFill} />
             <LinearGradient
-              colors={['#C8F576', '#7DDE4A']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              colors={['rgba(90,158,32,0.14)', 'rgba(181,241,91,0.28)']}
+              start={{ x: 0.15, y: 1 }}
+              end={{ x: 0.85, y: 0 }}
               style={StyleSheet.absoluteFill}
             />
-            <Sparkles size={24} color={Colors.textDark} strokeWidth={2} />
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={pressAI}
+              activeOpacity={1}
+              style={styles.aiTouch}
+            >
+              <Sparkles
+                size={23}
+                color={Colors.textDark}
+                strokeWidth={1.75}
+              />
+            </TouchableOpacity>
+          </Animated.View>
         </View>
-      </View>
+      </Animated.View>
 
       <AISheet visible={aiOpen} onClose={() => setAiOpen(false)} />
     </>
@@ -129,87 +215,95 @@ const styles = StyleSheet.create({
     zIndex: 999,
   },
 
-  /* Pill gauche */
+  /* ── Tab pill ── */
   pillShadow: {
     width: PILL_W,
     height: PILL_H,
-    borderRadius: RADIUS,
+    borderRadius: 100,
+    // Shadow-only (no overflow) — iOS Liquid Glass rule
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.13,
+    shadowRadius: 20,
+    elevation: 12,
   },
   pillClip: {
     width: PILL_W,
     height: PILL_H,
-    borderRadius: RADIUS,
+    borderRadius: 100,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: 'rgba(255,255,255,0.68)',
   },
-  glassFill: {
-    backgroundColor: Platform.OS === 'ios'
-      ? 'rgba(255,255,255,0.28)'
-      : 'rgba(255,255,255,0.96)',
+  pillFrost: {
+    backgroundColor:
+      Platform.OS === 'ios'
+        ? 'rgba(255,255,255,0.20)'
+        : 'rgba(255,255,255,0.94)',
   },
-  pillInner: {
+  pillRow: {
     flexDirection: 'row',
     alignItems: 'center',
     width: PILL_W,
     height: PILL_H,
-    padding: 4,
+    paddingHorizontal: 4,
   },
-  tabTouch: { flex: 1, height: '100%' },
-  tabItem: {
+  tabTouch: {
     flex: 1,
     height: '100%',
-    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 100,
     gap: 3,
   },
-  tabItemActive: { backgroundColor: Colors.primary },
-  labelActive: {
+  labelFocused: {
     fontFamily: FontFamily.calendarBold,
     fontSize: 10,
-    color: '#000000',
+    color: '#ffffff',
   },
-  labelInactive: {
+  labelDefault: {
     fontFamily: FontFamily.calendarMedium,
     fontSize: 10,
-    color: '#999999',
+    color: '#9a9a9a',
   },
 
-  /* Bouton IA */
-  aiWrapper: {
-    width: AI_SIZE,
-    height: AI_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  glowRing: {
+  /* ── Sliding indicator ── */
+  indicator: {
     position: 'absolute',
-    width: AI_SIZE + 16,
-    height: AI_SIZE + 16,
-    borderRadius: (AI_SIZE + 16) / 2,
-    backgroundColor: 'rgba(181,241,91,0.5)',
-    // Soft glow via shadow
-    shadowColor: '#B5F15B',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
+    top: 4,
+    left: 0,
+    width: IND_W,
+    height: IND_H,
+    borderRadius: 100,
+    backgroundColor: 'rgba(15,22,8,0.72)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.20,
+    shadowRadius: 6,
     elevation: 0,
   },
-  aiBtn: {
+
+  /* ── AI glass bubble ── */
+  aiShadow: {
+    width: AI_SIZE,
+    height: AI_SIZE,
+    borderRadius: AI_SIZE / 2,
+    shadowColor: '#3A7A00',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 10,
+  },
+  aiClip: {
     width: AI_SIZE,
     height: AI_SIZE,
     borderRadius: AI_SIZE / 2,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.68)',
+  },
+  aiTouch: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)',
-    shadowColor: '#7DDE4A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 8,
   },
 });

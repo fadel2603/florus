@@ -39,6 +39,7 @@ import {
 import { ANTHROPIC_API_KEY, AI_MODEL } from '@/constants/api';
 import Button from '@/components/ui/Button';
 import TimelineItem from '@/components/ui/TimelineItem';
+import AISheet from '@/components/AISheet';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -184,6 +185,8 @@ export default function PlantDetailScreen() {
   const [history, setHistory] = useState(() => HISTORY_EVENTS[plant.id] ?? []);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null);
+  const [aiVisible, setAiVisible] = useState(false);
+  const aiPhotoCallbackRef = useRef<((uri: string) => void) | null>(null);
 
   // ── Edit sheet ──
   const [editVisible, setEditVisible] = useState(false);
@@ -422,18 +425,32 @@ export default function PlantDetailScreen() {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
       if (photo?.uri) {
         setCameraVisible(false);
-        setScanStepIndex(0);
-        setApplyDone(false);
-        setConfirmStep(false);
-        setQuestionText('');
-        setQuestionAnswer(null);
-        setScanDiagnosis(null);
-        setScanPhotoUri(photo.uri);
-        setScanAnalyzing(true);
+        if (aiPhotoCallbackRef.current) {
+          aiPhotoCallbackRef.current(photo.uri);
+          aiPhotoCallbackRef.current = null;
+        } else {
+          setScanStepIndex(0);
+          setApplyDone(false);
+          setConfirmStep(false);
+          setQuestionText('');
+          setQuestionAnswer(null);
+          setScanDiagnosis(null);
+          setScanPhotoUri(photo.uri);
+          setScanAnalyzing(true);
+        }
       }
     } catch (e) {
       console.warn('Camera error', e);
     }
+  };
+
+  const handleAIOpenCamera = async (onPhoto: (uri: string) => void) => {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) return;
+    }
+    aiPhotoCallbackRef.current = onPhoto;
+    setCameraVisible(true);
   };
 
   const dismissScanResult = () => {
@@ -541,8 +558,16 @@ export default function PlantDetailScreen() {
                 <Text style={styles.metaPhotos} onPress={() => setGalleryOpen(true)}>3 📸</Text>
               </Text>
             </View>
-            <Button label="Scanner" onPress={handleScan} variant="primary" size="sm" icon="scan" />
           </View>
+
+          <TouchableOpacity
+            style={styles.aiQuestionBtn}
+            onPress={() => setAiVisible(true)}
+            activeOpacity={0.82}
+          >
+            <Ionicons name="sparkles" size={17} color={Colors.textDark} />
+            <Text style={styles.aiQuestionBtnLabel}>Poser une question</Text>
+          </TouchableOpacity>
 
           {/* Glass stat cards */}
           <View style={styles.statsRow}>
@@ -628,7 +653,7 @@ export default function PlantDetailScreen() {
       </Modal>
 
       {/* ── IN-APP CAMERA ── */}
-      <Modal visible={cameraVisible} animationType="slide" statusBarTranslucent onRequestClose={() => setCameraVisible(false)}>
+      <Modal visible={cameraVisible} animationType="slide" statusBarTranslucent onRequestClose={() => { setCameraVisible(false); aiPhotoCallbackRef.current = null; }}>
         <View style={styles.camRoot}>
           <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
@@ -681,7 +706,7 @@ export default function PlantDetailScreen() {
             </View>
           )}
 
-          <TouchableOpacity style={[styles.camCloseBtn, { top: insets.top + 12 }]} onPress={() => setCameraVisible(false)}>
+          <TouchableOpacity style={[styles.camCloseBtn, { top: insets.top + 12 }]} onPress={() => { setCameraVisible(false); aiPhotoCallbackRef.current = null; }}>
             <Ionicons name="close" size={22} color="white" />
           </TouchableOpacity>
         </View>
@@ -878,6 +903,20 @@ export default function PlantDetailScreen() {
         </Modal>
       )}
 
+      {/* ── AI SHEET (contextuel à la plante) ── */}
+      <AISheet
+        visible={aiVisible}
+        onClose={() => setAiVisible(false)}
+        plantContext={{
+          name: plant.name,
+          species: plant.species,
+          image: plant.image,
+          waterFrequency: plant.waterFrequency,
+          location: plant.location === 'outdoor' ? 'outdoor' : 'indoor',
+        }}
+        onOpenCamera={handleAIOpenCamera}
+      />
+
       {/* ── EDIT BOTTOM SHEET ── */}
       {editVisible && (
         <Modal visible transparent animationType="none" onRequestClose={dismissEdit}>
@@ -965,12 +1004,30 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 12, fontFamily: FontFamily.labelMedium, color: Colors.white },
 
   body: { padding: 20 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18, gap: 12 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
   infoMain: { flex: 1 },
   plantName: { fontFamily: FontFamily.titleDisplay, fontSize: 28, color: Colors.textDark },
   species: { fontFamily: FontFamily.bodyRegular, fontSize: 14, color: Colors.textMuted, fontStyle: 'italic', marginTop: 2 },
   meta: { fontFamily: FontFamily.bodyRegular, fontSize: 12, color: Colors.textMuted, marginTop: 5 },
   metaPhotos: { color: Colors.textDark, fontFamily: FontFamily.calendarBold },
+
+  aiQuestionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: Colors.sectionBg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 16,
+  },
+  aiQuestionBtnLabel: {
+    fontFamily: FontFamily.calendarBold,
+    fontSize: 14,
+    color: Colors.textDark,
+  },
 
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
   glassOuter: { flex: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 3 },

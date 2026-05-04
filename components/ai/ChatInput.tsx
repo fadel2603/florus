@@ -38,6 +38,7 @@ interface ChatInputProps {
   onMic: () => void;
   inputRef: RefObject<TextInput | null>;
   paddingBottom: number;
+  placeholder?: string;
 }
 
 export default function ChatInput({
@@ -50,6 +51,7 @@ export default function ChatInput({
   onMic,
   inputRef,
   paddingBottom,
+  placeholder = 'Une question ?',
 }: ChatInputProps) {
   const hasSendable = !!input.trim() || !!pendingImage;
 
@@ -70,7 +72,7 @@ export default function ChatInput({
             style={styles.field}
             value={input}
             onChangeText={onChangeText}
-            placeholder="Une question ?"
+            placeholder={placeholder}
             placeholderTextColor="rgba(255,255,255,0.6)"
             selectionColor="#5B9E3B"
             returnKeyType="send"
