@@ -7,11 +7,9 @@ import {
   Animated,
   PanResponder,
   Modal,
-  Platform,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontFamily } from '@/constants/fonts';
 
 type Props = {
@@ -21,26 +19,36 @@ type Props = {
   onGallery: () => void;
 };
 
-const SHEET_H = 220;
+const SLIDE_OUT = 360;
 const DISMISS_THRESHOLD = 60;
 
 export default function AddPlantSheet({ visible, onClose, onCamera, onGallery }: Props) {
-  const translateY = useRef(new Animated.Value(SHEET_H)).current;
+  const insets = useSafeAreaInsets();
+  const translateY = useRef(new Animated.Value(SLIDE_OUT)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(SHEET_H);
+      translateY.setValue(SLIDE_OUT);
       Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200 }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          damping: 22,
+          stiffness: 220,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 240,
+          useNativeDriver: true,
+        }),
       ]).start();
     }
   }, [visible]);
 
   const dismiss = () => {
     Animated.parallel([
-      Animated.timing(translateY, { toValue: SHEET_H, duration: 250, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: SLIDE_OUT, duration: 240, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => onClose());
   };
@@ -54,7 +62,12 @@ export default function AddPlantSheet({ visible, onClose, onCamera, onGallery }:
         if (g.dy > DISMISS_THRESHOLD || g.vy > 0.5) {
           dismiss();
         } else {
-          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200 }).start();
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 22,
+            stiffness: 220,
+          }).start();
         }
       },
     })
@@ -69,38 +82,47 @@ export default function AddPlantSheet({ visible, onClose, onCamera, onGallery }:
       </Animated.View>
 
       <Animated.View
-        style={[styles.sheet, { transform: [{ translateY }] }]}
+        style={[styles.sheet, { transform: [{ translateY }], paddingBottom: insets.bottom + 16 }]}
         {...panResponder.panHandlers}
       >
-        <BlurView intensity={90} tint="light" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, styles.glass]} />
-
         <View style={styles.handle} />
+
+        <TouchableOpacity style={styles.closeBtn} onPress={dismiss} activeOpacity={0.7}>
+          <Ionicons name="close" size={17} color="#1a1a1a" />
+        </TouchableOpacity>
 
         <Text style={styles.title}>Ajouter une plante</Text>
 
         <TouchableOpacity
-          style={styles.option}
-          activeOpacity={0.7}
+          style={styles.optionCell}
+          activeOpacity={0.75}
           onPress={() => { dismiss(); setTimeout(onCamera, 280); }}
         >
-          <View style={styles.optionIcon}>
-            <Ionicons name="camera" size={22} color={Colors.textDark} />
+          <View style={[styles.optionIconWrap, styles.iconCamera]}>
+            <Ionicons name="camera" size={22} color="#007AFF" />
           </View>
-          <Text style={styles.optionText}>Prendre une photo</Text>
-          <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+          <View style={styles.optionTexts}>
+            <Text style={styles.optionLabel}>Prendre une photo</Text>
+            <Text style={styles.optionDesc}>Photographiez votre plante pour l'identifier</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#C7C7CC" />
         </TouchableOpacity>
 
+        <View style={styles.divider} />
+
         <TouchableOpacity
-          style={styles.option}
-          activeOpacity={0.7}
+          style={styles.optionCell}
+          activeOpacity={0.75}
           onPress={() => { dismiss(); setTimeout(onGallery, 280); }}
         >
-          <View style={styles.optionIcon}>
-            <Ionicons name="images" size={22} color={Colors.textDark} />
+          <View style={[styles.optionIconWrap, styles.iconGallery]}>
+            <Ionicons name="images" size={22} color="#FF9500" />
           </View>
-          <Text style={styles.optionText}>Choisir dans la galerie</Text>
-          <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+          <View style={styles.optionTexts}>
+            <Text style={styles.optionLabel}>Choisir dans la galerie</Text>
+            <Text style={styles.optionDesc}>Utilisez une photo existante de votre galerie</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#C7C7CC" />
         </TouchableOpacity>
       </Animated.View>
     </Modal>
@@ -110,62 +132,94 @@ export default function AddPlantSheet({ visible, onClose, onCamera, onGallery }:
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheet: {
     position: 'absolute',
-    bottom: 12,
-    left: 10,
-    right: 10,
-    height: SHEET_H,
-    borderRadius: 44,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    alignItems: 'center',
-  },
-  glass: {
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.96)',
-    borderRadius: 44,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 20,
   },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.15)',
-    marginTop: 10,
-    marginBottom: 14,
+    backgroundColor: '#E0E0E0',
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F2F2F7',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontFamily: FontFamily.headerBold,
-    fontSize: 16,
-    color: Colors.textDark,
-    marginBottom: 12,
-    alignSelf: 'flex-start',
+    fontSize: 18,
+    color: '#1a1a1a',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
   },
-  option: {
-    width: '100%',
+  optionCell: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
   },
-  optionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+  optionIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.20,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  optionText: {
-    fontFamily: FontFamily.calendarMedium,
-    fontSize: 16,
-    color: Colors.textDark,
+  iconCamera: {
+    backgroundColor: '#E8F0FE',
+    shadowColor: '#007AFF',
+  },
+  iconGallery: {
+    backgroundColor: '#FFF3E0',
+    shadowColor: '#FF9500',
+  },
+  optionTexts: {
     flex: 1,
+    gap: 3,
+  },
+  optionLabel: {
+    fontFamily: FontFamily.calendarBold,
+    fontSize: 15,
+    color: '#1a1a1a',
+  },
+  optionDesc: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 13,
+    color: '#6b6b6b',
+    lineHeight: 18,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#EBEBEB',
+    marginLeft: 62,
   },
 });

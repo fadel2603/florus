@@ -34,7 +34,7 @@ const PILL_W  = 180;
 const PILL_H  = 60;
 const AI_SIZE = 60;
 const RADIUS  = 100;
-const BORDER  = 'rgba(255,255,255,1)';
+const BORDER  = 'rgba(255,255,255,0.80)';
 
 export default function LiquidGlassTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -63,7 +63,7 @@ export default function LiquidGlassTabBar({ state, navigation }: BottomTabBarPro
         {/* ── PILL GAUCHE ── */}
         <View style={[styles.pillShadow, SHADOW]}>
           <View style={styles.pillClip}>
-            <BlurView intensity={90} tint="light" style={StyleSheet.absoluteFill} />
+            <BlurView intensity={95} tint="light" style={StyleSheet.absoluteFill} />
             <View style={[StyleSheet.absoluteFill, styles.glassFill]} />
             <View style={styles.pillInner}>
               {NAV_ROUTES.map(route => {
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   },
   glassFill: {
     backgroundColor: Platform.OS === 'ios'
-      ? 'rgba(255,255,255,0.80)'
+      ? 'rgba(255,255,255,0.28)'
       : 'rgba(255,255,255,0.96)',
   },
   pillInner: {

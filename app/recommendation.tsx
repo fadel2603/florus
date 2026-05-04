@@ -10,6 +10,10 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
+import { FontFamily } from '@/constants/fonts';
+import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
+import StepCard from '@/components/ui/StepCard';
 
 const STEPS = [
   {
@@ -49,7 +53,6 @@ export default function RecommendationScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* Handle */}
       <View style={styles.handle} />
 
       <ScrollView
@@ -59,10 +62,7 @@ export default function RecommendationScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.aiBadge}>
-            <Ionicons name="sparkles" size={14} color={Colors.textDark} />
-            <Text style={styles.aiBadgeText}>Recommandation IA</Text>
-          </View>
+          <Badge label="Recommandation IA" variant="primary" icon="sparkles" />
           <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
             <Ionicons name="close" size={20} color={Colors.textDark} />
           </TouchableOpacity>
@@ -81,26 +81,25 @@ export default function RecommendationScreen() {
 
         {/* Steps */}
         <Text style={styles.stepsTitle}>Plan de traitement</Text>
-        {STEPS.map((item, i) => (
-          <View key={i} style={styles.stepCard}>
-            <View style={styles.stepNum}>
-              <Text style={styles.stepNumText}>{item.step}</Text>
-            </View>
-            <View style={styles.stepIconWrap}>
-              <Ionicons name={item.icon as any} size={20} color={Colors.primary} />
-            </View>
-            <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>{item.title}</Text>
-              <Text style={styles.stepDesc}>{item.desc}</Text>
-            </View>
-          </View>
+        {STEPS.map(item => (
+          <StepCard
+            key={item.step}
+            step={item.step}
+            icon={item.icon as any}
+            title={item.title}
+            desc={item.desc}
+          />
         ))}
 
         {/* CTA */}
-        <TouchableOpacity style={styles.doneBtn} onPress={() => router.back()} activeOpacity={0.8}>
-          <Ionicons name="checkmark-circle" size={20} color={Colors.textDark} />
-          <Text style={styles.doneBtnText}>Marquer comme lu</Text>
-        </TouchableOpacity>
+        <Button
+          label="Marquer comme lu"
+          onPress={() => router.back()}
+          variant="primary"
+          size="lg"
+          icon="checkmark-circle"
+          style={styles.doneBtn}
+        />
 
         <Text style={styles.disclaimer}>
           Recommandations générées par IA. Consultez un botaniste en cas de doute.
@@ -128,23 +127,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  aiBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-    flex: 1,
-    alignSelf: 'flex-start',
-    flexGrow: 0,
-  },
-  aiBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textDark,
-  },
   closeBtn: {
     marginLeft: 'auto',
     width: 36,
@@ -155,12 +137,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
+    fontFamily: FontFamily.headerBold,
     fontSize: 26,
-    fontWeight: '800',
     color: Colors.textDark,
     marginBottom: 6,
   },
   subtitle: {
+    fontFamily: FontFamily.bodyRegular,
     fontSize: 14,
     color: Colors.textMuted,
     lineHeight: 20,
@@ -178,76 +161,22 @@ const styles = StyleSheet.create({
     borderLeftColor: Colors.orange,
   },
   urgencyText: {
+    fontFamily: FontFamily.calendarBold,
     fontSize: 14,
-    fontWeight: '600',
     color: Colors.textDark,
   },
   stepsTitle: {
+    fontFamily: FontFamily.headerBold,
     fontSize: 17,
-    fontWeight: '700',
     color: Colors.textDark,
     marginBottom: 12,
   },
-  stepCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: Colors.background,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 8,
-  },
-  stepNum: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  stepNumText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textDark,
-  },
-  stepIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.primary + '22',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepContent: { flex: 1 },
-  stepTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textDark,
-    marginBottom: 3,
-  },
-  stepDesc: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    lineHeight: 19,
-  },
   doneBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    paddingVertical: 16,
-    borderRadius: 18,
     marginTop: 12,
     marginBottom: 8,
   },
-  doneBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textDark,
-  },
   disclaimer: {
+    fontFamily: FontFamily.bodyRegular,
     fontSize: 11,
     color: Colors.textMuted,
     textAlign: 'center',

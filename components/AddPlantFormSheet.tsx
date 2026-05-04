@@ -9,11 +9,11 @@ import {
   Animated,
   PanResponder,
   Modal,
-  Platform,
   ScrollView,
+  Dimensions,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
 
@@ -23,10 +23,11 @@ type Props = {
   detectedLocation: string;
   photoUri: string | null;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (name: string, location: 'Intérieur' | 'Extérieur') => void;
 };
 
-const SHEET_H = 460;
+const SCREEN_H = Dimensions.get('window').height;
+const SLIDE_OUT = 520;
 const DISMISS_THRESHOLD = 80;
 
 export default function AddPlantFormSheet({
@@ -37,7 +38,8 @@ export default function AddPlantFormSheet({
   onClose,
   onConfirm,
 }: Props) {
-  const translateY = useRef(new Animated.Value(SHEET_H)).current;
+  const insets = useSafeAreaInsets();
+  const translateY = useRef(new Animated.Value(SLIDE_OUT)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const [name, setName] = useState(detectedName);
   const [location, setLocation] = useState<'Intérieur' | 'Extérieur'>(
@@ -47,7 +49,7 @@ export default function AddPlantFormSheet({
   useEffect(() => {
     if (visible) {
       setName(detectedName);
-      translateY.setValue(SHEET_H);
+      translateY.setValue(SLIDE_OUT);
       Animated.parallel([
         Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200 }),
         Animated.timing(backdropOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
@@ -57,7 +59,7 @@ export default function AddPlantFormSheet({
 
   const dismiss = () => {
     Animated.parallel([
-      Animated.timing(translateY, { toValue: SHEET_H, duration: 250, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: SLIDE_OUT, duration: 250, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => onClose());
   };
@@ -86,27 +88,27 @@ export default function AddPlantFormSheet({
       </Animated.View>
 
       <Animated.View
-        style={[styles.sheet, { transform: [{ translateY }] }]}
+        style={[styles.sheet, { transform: [{ translateY }], maxHeight: SCREEN_H * 0.88, paddingBottom: insets.bottom + 16 }]}
         {...panResponder.panHandlers}
       >
-        <BlurView intensity={90} tint="light" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, styles.glass]} />
-
         <View style={styles.handle} />
+
+        <TouchableOpacity style={styles.closeBtn} onPress={dismiss} activeOpacity={0.7}>
+          <Ionicons name="close" size={17} color="#1a1a1a" />
+        </TouchableOpacity>
+
         <Text style={styles.title}>Personnaliser</Text>
 
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Name field */}
           <Text style={styles.label}>Nom de la plante</Text>
           <TextInput
             style={styles.input}
             value={name}
             onChangeText={setName}
             placeholder="Ex : Mon Monstera"
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor="#AEAEB2"
           />
 
-          {/* Location toggle */}
           <Text style={styles.label}>Emplacement</Text>
           <View style={styles.toggleRow}>
             {(['Intérieur', 'Extérieur'] as const).map(loc => (
@@ -119,7 +121,7 @@ export default function AddPlantFormSheet({
                 <Ionicons
                   name={loc === 'Intérieur' ? 'home-outline' : 'sunny-outline'}
                   size={15}
-                  color={location === loc ? Colors.textDark : Colors.textMuted}
+                  color={location === loc ? '#FFFFFF' : '#6b6b6b'}
                 />
                 <Text style={[styles.toggleText, location === loc && styles.toggleTextActive]}>
                   {loc}
@@ -128,14 +130,13 @@ export default function AddPlantFormSheet({
             ))}
           </View>
 
-          {/* Photo preview */}
           {photoUri && (
             <>
               <Text style={styles.label}>Photo</Text>
               <View style={styles.photoRow}>
                 <Image source={{ uri: photoUri }} style={styles.photoThumb} />
                 <TouchableOpacity style={styles.addPhotoBtn} activeOpacity={0.7}>
-                  <Ionicons name="add" size={22} color={Colors.textDark} />
+                  <Ionicons name="add" size={22} color="#6b6b6b" />
                 </TouchableOpacity>
               </View>
             </>
@@ -144,9 +145,8 @@ export default function AddPlantFormSheet({
           <View style={{ height: 16 }} />
         </ScrollView>
 
-        {/* Confirm button */}
-        <TouchableOpacity style={styles.confirmBtn} activeOpacity={0.85} onPress={onConfirm}>
-          <Ionicons name="leaf" size={18} color={Colors.textDark} />
+        <TouchableOpacity style={styles.confirmBtn} activeOpacity={0.85} onPress={() => onConfirm(name, location)}>
+          <Ionicons name="leaf" size={18} color="#FFFFFF" />
           <Text style={styles.confirmText}>Ajouter à mes plantes</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -157,87 +157,100 @@ export default function AddPlantFormSheet({
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheet: {
     position: 'absolute',
-    bottom: 12,
-    left: 10,
-    right: 10,
-    height: SHEET_H,
-    borderRadius: 44,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    alignItems: 'center',
-  },
-  glass: {
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.96)',
-    borderRadius: 44,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 20,
   },
   handle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.15)',
-    marginTop: 10, marginBottom: 12,
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E0E0E0',
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F2F2F7',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontFamily: FontFamily.headerBold,
     fontSize: 18,
-    color: Colors.textDark,
-    marginBottom: 12,
-    alignSelf: 'flex-start',
+    color: '#1a1a1a',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
   },
-  scroll: { width: '100%', flex: 1 },
+  scroll: { width: '100%' },
   label: {
-    fontFamily: FontFamily.calendarMedium,
-    fontSize: 12,
-    color: Colors.textMuted,
-    marginBottom: 6,
+    fontFamily: FontFamily.calendarBold,
+    fontSize: 13,
+    color: '#1a1a1a',
+    marginBottom: 8,
     marginTop: 4,
   },
   input: {
     width: '100%',
-    height: 48,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    height: 52,
+    backgroundColor: '#F9F9F9',
     borderRadius: 14,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     fontFamily: FontFamily.calendarMedium,
     fontSize: 15,
-    color: Colors.textDark,
+    color: '#1a1a1a',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.07)',
-    marginBottom: 12,
+    borderColor: '#E0E0E0',
+    marginBottom: 24,
   },
   toggleRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
+    gap: 10,
+    marginBottom: 24,
   },
   toggleBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    height: 44,
+    gap: 7,
+    height: 48,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: '#F9F9F9',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.07)',
+    borderColor: '#E0E0E0',
   },
   toggleBtnActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: '#1a1a1a',
+    borderColor: '#1a1a1a',
   },
   toggleText: {
     fontFamily: FontFamily.calendarMedium,
     fontSize: 14,
-    color: Colors.textMuted,
+    color: '#6b6b6b',
   },
   toggleTextActive: {
-    color: Colors.textDark,
+    color: '#FFFFFF',
     fontFamily: FontFamily.calendarBold,
   },
   photoRow: {
@@ -255,9 +268,9 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: '#F9F9F9',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
+    borderColor: '#E0E0E0',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -268,8 +281,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: Colors.primary,
-    borderRadius: 18,
-    height: 52,
+    borderRadius: 16,
+    height: 56,
     marginTop: 4,
   },
   confirmText: {

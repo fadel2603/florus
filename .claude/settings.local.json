@@ -14,7 +14,15 @@
       "Bash(git checkout *)",
       "mcp__plugin_figma_figma__use_figma",
       "mcp__plugin_figma_figma__get_design_context",
-      "mcp__plugin_figma_figma__get_screenshot"
+      "mcp__plugin_figma_figma__get_screenshot",
+      "Bash(npx tsc *)",
+      "mcp__plugin_figma_figma__get_metadata",
+      "Bash(npx skills *)",
+      "Bash(kill %1)",
+      "Bash(grep -rn \"width: [0-9]\\\\{1,2\\\\}[^0-9]\" /Users/fadelgueye/app-plante/components/ui/ /Users/fadelgueye/app-plante/app/ --include=\"*.tsx\")",
+      "Bash(git check-ignore *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('expo:', p.dependencies.expo, 'rn:', p.dependencies['react-native']\\)\")",
+      "Bash(npm list *)"
     ]
   }
 }

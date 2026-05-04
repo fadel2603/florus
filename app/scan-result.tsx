@@ -11,6 +11,10 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
+import { FontFamily } from '@/constants/fonts';
+import Badge from '@/components/ui/Badge';
+import IconCircle from '@/components/ui/IconCircle';
+import Button from '@/components/ui/Button';
 
 const { width } = Dimensions.get('window');
 
@@ -25,7 +29,6 @@ export default function ScanResultScreen() {
           source={{ uri: 'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?w=600' }}
           style={styles.preview}
         />
-        {/* Scan frame overlay */}
         <View style={styles.frameOverlay}>
           <View style={styles.corner} />
           <View style={[styles.corner, styles.cornerTR]} />
@@ -44,16 +47,17 @@ export default function ScanResultScreen() {
       {/* Result card */}
       <View style={styles.resultCard}>
         <View style={styles.resultHeader}>
-          <View style={styles.warningIcon}>
-            <Ionicons name="warning" size={22} color={Colors.orange} />
-          </View>
+          <IconCircle
+            size={44}
+            backgroundColor={Colors.orange + '22'}
+            icon="warning"
+            iconColor={Colors.orange}
+          />
           <View style={styles.resultHeaderText}>
             <Text style={styles.resultTitle}>Anomalie détectée</Text>
             <Text style={styles.resultSubtitle}>Monstera deliciosa</Text>
           </View>
-          <View style={styles.confidenceBadge}>
-            <Text style={styles.confidenceText}>94%</Text>
-          </View>
+          <Badge label="94%" variant="primary" />
         </View>
 
         <View style={styles.divider} />
@@ -66,20 +70,18 @@ export default function ScanResultScreen() {
         <View style={styles.affectedRow}>
           <Ionicons name="leaf" size={14} color={Colors.textMuted} />
           <Text style={styles.affectedText}>3 feuilles affectées</Text>
-          <View style={styles.severityBadge}>
-            <Text style={styles.severityText}>Modéré</Text>
-          </View>
+          <Badge label="Modéré" variant="warning" />
         </View>
 
-        <TouchableOpacity
-          style={styles.ctaBtn}
+        <Button
+          label="Voir la recommandation IA"
           onPress={() => router.push('/recommendation' as any)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="sparkles" size={18} color={Colors.textDark} />
-          <Text style={styles.ctaBtnText}>Voir la recommandation IA</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.textDark} />
-        </TouchableOpacity>
+          variant="primary"
+          size="lg"
+          icon="sparkles"
+          iconRight="chevron-forward"
+          style={styles.ctaBtn}
+        />
       </View>
     </SafeAreaView>
   );
@@ -168,9 +170,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   scanLabelText: {
+    fontFamily: FontFamily.calendarBold,
     fontSize: 13,
     color: Colors.white,
-    fontWeight: '600',
   },
   resultCard: {
     backgroundColor: Colors.white,
@@ -185,46 +187,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  warningIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.orange + '22',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   resultHeaderText: { flex: 1 },
   resultTitle: {
+    fontFamily: FontFamily.headerBold,
     fontSize: 17,
-    fontWeight: '800',
     color: Colors.textDark,
   },
   resultSubtitle: {
+    fontFamily: FontFamily.bodyRegular,
     fontSize: 13,
     color: Colors.textMuted,
     fontStyle: 'italic',
-  },
-  confidenceBadge: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  confidenceText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.textDark,
   },
   divider: {
     height: 1,
     backgroundColor: Colors.border,
   },
   anomalyName: {
+    fontFamily: FontFamily.calendarBold,
     fontSize: 16,
-    fontWeight: '700',
     color: Colors.textDark,
   },
   anomalyDesc: {
+    fontFamily: FontFamily.bodyRegular,
     fontSize: 14,
     color: Colors.textMuted,
     lineHeight: 21,
@@ -235,35 +220,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   affectedText: {
+    fontFamily: FontFamily.bodyRegular,
     fontSize: 13,
     color: Colors.textMuted,
     flex: 1,
   },
-  severityBadge: {
-    backgroundColor: Colors.orange + '22',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  severityText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.orange,
-  },
   ctaBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 18,
     marginTop: 4,
-  },
-  ctaBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.textDark,
-    flex: 1,
   },
 });

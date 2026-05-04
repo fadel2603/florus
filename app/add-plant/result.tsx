@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
-  ScrollView,
   StatusBar,
+  ScrollView,
   Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,25 +16,79 @@ import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AddPlantFormSheet from '@/components/AddPlantFormSheet';
+import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
+import { AIPlantAnalysis } from '@/constants/api';
+import { Plant, Task, addPlant, addTasksForDay, logHistoryEvent } from '@/constants/data';
 
-// Simulated AI result
-const AI_RESULT = {
-  name: 'Monstera',
-  latinName: 'Monstera deliciosa',
-  location: 'Intérieur',
-  careLevel: 'Facile',
-  confidence: 96,
+const { height: SCREEN_H } = Dimensions.get('window');
+
+const HEALTH_CONFIG = {
+  healthy: { label: 'En bonne santé', color: '#2E7D32', bg: '#E8F5E9', icon: 'checkmark-circle' as const },
+  warning: { label: 'Attention requise', color: Colors.orange, bg: Colors.orangeBg, icon: 'warning' as const },
+  critical: { label: 'Soins urgents', color: '#C62828', bg: '#FFEBEE', icon: 'alert-circle' as const },
 };
 
-const { height: H } = Dimensions.get('window');
+const LIGHT_LABEL: Record<string, string> = {
+  low: 'Peu de lumière',
+  medium: 'Lumière moyenne',
+  high: 'Plein soleil',
+};
+
+type TaskTypeConfig = { color: string; emoji: string; label: string };
+const TASK_TYPE_CONFIG: Record<string, TaskTypeConfig> = {
+  water:        { color: '#2196F3', emoji: '💧', label: 'Arroser' },
+  observe:      { color: '#EB7C05', emoji: '👁️', label: 'Observer' },
+  repot:        { color: '#795548', emoji: '🪴', label: 'Rempoter' },
+  fertilize:    { color: '#2E7D32', emoji: '🌿', label: 'Fertiliser' },
+  rotate:       { color: '#F9A825', emoji: '☀️', label: 'Tourner' },
+  clean_leaves: { color: '#66BB6A', emoji: '🧹', label: 'Nettoyer' },
+  mist:         { color: '#4FC3F7', emoji: '💦', label: 'Brumiser' },
+  trim:         { color: '#9C27B0', emoji: '✂️', label: 'Tailler' },
+  treat:        { color: '#C62828', emoji: '🚨', label: 'Traiter' },
+};
+
+function scheduleAITasks(
+  tasks: AIPlantAnalysis['tasks'],
+  plantId: string,
+  plantName: string,
+): void {
+  const todayDow = new Date().getDay();
+  tasks.forEach((aiTask, i) => {
+    const targetDow = (todayDow + aiTask.daysFromNow) % 7;
+    const days = new Set<number>([targetDow]);
+
+    if (aiTask.recurring && aiTask.recurringDays && aiTask.recurringDays > 0 && aiTask.recurringDays < 7) {
+      for (let d = targetDow + aiTask.recurringDays; d < targetDow + 7; d += aiTask.recurringDays) {
+        days.add(d % 7);
+      }
+    }
+
+    days.forEach(dow => {
+      const task: Task = {
+        id: `ai_${plantId}_${i}_${dow}`,
+        plantId,
+        plantName,
+        type: aiTask.type,
+        done: false,
+      };
+      addTasksForDay(dow, [task]);
+    });
+  });
+}
 
 export default function ResultScreen() {
-  const { photo } = useLocalSearchParams<{ photo: string }>();
+  const { photo, analysis: analysisParam } = useLocalSearchParams<{ photo: string; analysis: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardTranslateY = useRef(new Animated.Value(30)).current;
   const [showForm, setShowForm] = useState(false);
+
+  const analysis = useMemo<AIPlantAnalysis | null>(() => {
+    if (!analysisParam) return null;
+    try { return JSON.parse(analysisParam); } catch { return null; }
+  }, [analysisParam]);
 
   useEffect(() => {
     Animated.parallel([
@@ -43,15 +97,89 @@ export default function ResultScreen() {
     ]).start();
   }, []);
 
+  const handleConfirm = (customName: string, customLocation: 'Intérieur' | 'Extérieur') => {
+    if (analysis) {
+      const plantId = `ai_${Date.now()}`;
+      const newPlant: Plant = {
+        id: plantId,
+        name: customName,
+        species: analysis.species,
+        image: photo ?? '',
+        waterFrequency: `Tous les ${analysis.wateringFrequency} jours`,
+        lastWatered: 'Jamais',
+        health: analysis.health === 'healthy' ? 'good' : analysis.health,
+        lightNeeds: analysis.lightNeeds,
+        location: analysis.location,
+        healthNote: analysis.healthNote,
+        issues: analysis.issues,
+      };
+      addPlant(newPlant);
+      scheduleAITasks(analysis.tasks, plantId, customName);
+
+      // Log "added" event
+      logHistoryEvent(plantId, {
+        id: `added_${plantId}`,
+        type: 'added',
+        label: 'Plante ajoutée',
+        date: new Date().toISOString(),
+        icon: 'leaf-outline',
+        color: Colors.primary,
+      });
+
+      // Log AI analysis event
+      const healthLabel: Record<string, string> = { healthy: 'Bonne santé', warning: 'Attention requise', critical: 'Soins urgents' };
+      const issueNote = analysis.issues.length > 0 ? ` · ${analysis.issues[0]}` : '';
+      logHistoryEvent(plantId, {
+        id: `analysis_${plantId}`,
+        type: 'analysis',
+        label: `Analyse IA : ${healthLabel[analysis.health] ?? analysis.health}${issueNote}`,
+        date: new Date().toISOString(),
+        icon: 'sparkles-outline',
+        color: '#9C27B0',
+      });
+    }
+    setShowForm(false);
+    router.replace('/(tabs)/plants' as any);
+  };
+
+  // — Error state: API returned nothing —
+  if (!analysis) {
+    return (
+      <View style={styles.root}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        {photo && <Image source={{ uri: photo }} style={styles.bg} />}
+        <View style={styles.bgGradient} />
+        <TouchableOpacity style={[styles.backBtn, { top: insets.top + 12 }]} onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={22} color="white" />
+        </TouchableOpacity>
+        <Animated.View style={[styles.card, { bottom: insets.bottom + 16, opacity: cardOpacity, transform: [{ translateY: cardTranslateY }] }]}>
+          <Ionicons name="alert-circle-outline" size={40} color={Colors.orange} style={{ marginBottom: 12 }} />
+          <Text style={styles.name}>Identification échouée</Text>
+          <Text style={[styles.latinName, { marginBottom: 20 }]}>
+            Vérifiez votre connexion internet et réessayez avec une photo plus nette.
+          </Text>
+          <Button
+            label="Réessayer"
+            onPress={() => router.replace('/add-plant/camera' as any)}
+            variant="primary"
+            size="lg"
+            fullWidth
+          />
+        </Animated.View>
+      </View>
+    );
+  }
+
+  const health = HEALTH_CONFIG[analysis.health] ?? HEALTH_CONFIG.warning;
+  const locationLabel = analysis.location === 'indoor' ? 'Intérieur' : 'Extérieur';
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* Hero photo */}
       {photo && <Image source={{ uri: photo }} style={styles.bg} />}
       <View style={styles.bgGradient} />
 
-      {/* Back */}
       <TouchableOpacity
         style={[styles.backBtn, { top: insets.top + 12 }]}
         onPress={() => router.back()}
@@ -59,67 +187,108 @@ export default function ResultScreen() {
         <Ionicons name="chevron-back" size={22} color="white" />
       </TouchableOpacity>
 
-      {/* Result card */}
       <Animated.View
         style={[
           styles.card,
           { bottom: insets.bottom + 16, opacity: cardOpacity, transform: [{ translateY: cardTranslateY }] },
         ]}
       >
-        {/* Confidence badge */}
-        <View style={styles.confidenceBadge}>
-          <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
-          <Text style={styles.confidenceText}>Identifié à {AI_RESULT.confidence}%</Text>
+        {/* Plant name + species */}
+        <Text style={styles.name}>{analysis.name}</Text>
+        <Text style={styles.latinName}>{analysis.species}</Text>
+
+        {/* Health badge + note */}
+        <View style={[styles.healthBadge, { backgroundColor: health.bg }]}>
+          <Ionicons name={health.icon} size={14} color={health.color} />
+          <Text style={[styles.healthLabel, { color: health.color }]}>{health.label}</Text>
         </View>
+        <Text style={styles.healthNote}>{analysis.healthNote}</Text>
 
-        {/* Name */}
-        <Text style={styles.name}>{AI_RESULT.name}</Text>
-        <Text style={styles.latinName}>{AI_RESULT.latinName}</Text>
-
-        {/* Badges row */}
-        <View style={styles.badgesRow}>
-          <View style={styles.badge}>
-            <Ionicons name="home-outline" size={13} color={Colors.textDark} />
-            <Text style={styles.badgeText}>{AI_RESULT.location}</Text>
+        {/* Scrollable extra content */}
+        <ScrollView
+          style={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Care chips */}
+          <View style={styles.careRow}>
+            <View style={styles.careChip}>
+              <Ionicons name={analysis.location === 'indoor' ? 'home-outline' : 'sunny-outline'} size={13} color={Colors.textSecondary} />
+              <Text style={styles.careChipText}>{locationLabel}</Text>
+            </View>
+            <View style={styles.careChip}>
+              <Ionicons name="sunny-outline" size={13} color={Colors.textSecondary} />
+              <Text style={styles.careChipText}>{LIGHT_LABEL[analysis.lightNeeds] ?? analysis.lightNeeds}</Text>
+            </View>
+            <View style={styles.careChip}>
+              <Ionicons name="water-outline" size={13} color={Colors.textSecondary} />
+              <Text style={styles.careChipText}>{`/${analysis.wateringFrequency}j`}</Text>
+            </View>
           </View>
-          <View style={styles.badge}>
-            <Ionicons name="leaf-outline" size={13} color={Colors.textDark} />
-            <Text style={styles.badgeText}>{AI_RESULT.careLevel}</Text>
-          </View>
-        </View>
 
+          {/* Issues */}
+          {analysis.issues.length > 0 && (
+            <View style={styles.issuesSection}>
+              <View style={styles.issuesTitleRow}>
+                <Ionicons name="warning-outline" size={13} color={Colors.orange} />
+                <Text style={styles.issuesSectionTitle}>Points d'attention</Text>
+              </View>
+              {analysis.issues.map((issue, i) => (
+                <Text key={i} style={styles.issueItem}>• {issue}</Text>
+              ))}
+            </View>
+          )}
+
+          {/* Tasks preview */}
+          {analysis.tasks.length > 0 && (
+            <View style={styles.tasksSection}>
+              <Text style={styles.tasksSectionTitle}>
+                {analysis.tasks.length} tâche{analysis.tasks.length > 1 ? 's' : ''} générée{analysis.tasks.length > 1 ? 's' : ''}
+              </Text>
+              {analysis.tasks.slice(0, 5).map((task, i) => {
+                const cfg = TASK_TYPE_CONFIG[task.type] ?? { color: Colors.textMuted, emoji: '📌', label: task.type };
+                return (
+                  <View key={i} style={styles.taskRow}>
+                    <Text style={styles.taskEmoji}>{cfg.emoji}</Text>
+                    <Text style={[styles.taskTitle, { flex: 1 }]}>{task.title}</Text>
+                    {task.recurring && task.recurringDays != null && (
+                      <Text style={styles.taskRecurring}>/{task.recurringDays}j</Text>
+                    )}
+                  </View>
+                );
+              })}
+              {analysis.tasks.length > 5 && (
+                <Text style={styles.taskMore}>+{analysis.tasks.length - 5} autres tâches</Text>
+              )}
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Action buttons */}
         <Text style={styles.question}>Est-ce bien cette plante ?</Text>
-
-        {/* Confirm */}
-        <TouchableOpacity
-          style={styles.confirmBtn}
-          activeOpacity={0.85}
+        <Button
+          label="Confirmer et ajouter"
           onPress={() => setShowForm(true)}
-        >
-          <Ionicons name="checkmark" size={18} color={Colors.textDark} />
-          <Text style={styles.confirmText}>Confirmer et ajouter</Text>
-        </TouchableOpacity>
-
-        {/* Retry */}
-        <TouchableOpacity
-          style={styles.retryBtn}
-          activeOpacity={0.7}
+          variant="primary"
+          size="lg"
+          icon="checkmark"
+          fullWidth
+          style={styles.confirmBtn}
+        />
+        <Button
+          label="Réessayer"
           onPress={() => router.replace('/add-plant/camera' as any)}
-        >
-          <Text style={styles.retryText}>Réessayer</Text>
-        </TouchableOpacity>
+          variant="text"
+        />
       </Animated.View>
 
       <AddPlantFormSheet
         visible={showForm}
-        detectedName={AI_RESULT.name}
-        detectedLocation={AI_RESULT.location}
+        detectedName={analysis.name}
+        detectedLocation={locationLabel}
         photoUri={photo ?? null}
         onClose={() => setShowForm(false)}
-        onConfirm={() => {
-          setShowForm(false);
-          router.replace('/(tabs)/plants' as any);
-        }}
+        onConfirm={handleConfirm}
       />
     </View>
   );
@@ -130,7 +299,7 @@ const styles = StyleSheet.create({
   bg: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   bgGradient: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.30)',
   },
   backBtn: {
     position: 'absolute',
@@ -146,30 +315,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
+    maxHeight: SCREEN_H * 0.76,
     backgroundColor: 'rgba(255,255,255,0.97)',
     borderRadius: 32,
     padding: 24,
+    paddingBottom: 16,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.20,
     shadowRadius: 24,
     elevation: 12,
-  },
-  confidenceBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: Colors.primary + '30',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    marginBottom: 12,
-  },
-  confidenceText: {
-    fontFamily: FontFamily.calendarMedium,
-    fontSize: 12,
-    color: Colors.textDark,
   },
   name: {
     fontFamily: FontFamily.titleDisplay,
@@ -183,56 +339,132 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontStyle: 'italic',
     marginTop: 4,
-    marginBottom: 14,
+    marginBottom: 12,
     textAlign: 'center',
   },
-  badgesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  badge: {
+  healthBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: Colors.background,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginBottom: 7,
+  },
+  healthLabel: {
+    fontFamily: FontFamily.labelMedium,
+    fontSize: 13,
+  },
+  healthNote: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 13,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  scroll: {
+    width: '100%',
+    flexGrow: 0,
+    maxHeight: SCREEN_H * 0.22,
+  },
+  scrollContent: {
+    gap: 10,
+    paddingBottom: 4,
+  },
+  careRow: {
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  careChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.sectionBg,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 20,
   },
-  badgeText: {
+  careChipText: {
     fontFamily: FontFamily.calendarMedium,
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  issuesSection: {
+    width: '100%',
+    backgroundColor: Colors.orangeBg,
+    borderRadius: 14,
+    padding: 12,
+    gap: 4,
+  },
+  issuesTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 4,
+  },
+  issuesSectionTitle: {
+    fontFamily: FontFamily.labelMedium,
+    fontSize: 13,
+    color: Colors.orange,
+  },
+  issueItem: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  tasksSection: {
+    width: '100%',
+    backgroundColor: Colors.sectionBg,
+    borderRadius: 14,
+    padding: 12,
+    gap: 6,
+  },
+  tasksSectionTitle: {
+    fontFamily: FontFamily.labelMedium,
     fontSize: 13,
     color: Colors.textDark,
+    marginBottom: 4,
+  },
+  taskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  taskEmoji: {
+    fontSize: 14,
+    lineHeight: 18,
+    width: 20,
+    textAlign: 'center',
+  },
+  taskTitle: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  taskRecurring: {
+    fontFamily: FontFamily.calendarMedium,
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  taskMore: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+    textAlign: 'center',
   },
   question: {
     fontFamily: FontFamily.calendarMedium,
     fontSize: 14,
     color: Colors.textMuted,
-    marginBottom: 16,
+    marginTop: 14,
+    marginBottom: 12,
   },
   confirmBtn: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    borderRadius: 18,
-    height: 52,
     marginBottom: 10,
-  },
-  confirmText: {
-    fontFamily: FontFamily.calendarBold,
-    fontSize: 16,
-    color: Colors.textDark,
-  },
-  retryBtn: {
-    paddingVertical: 8,
-  },
-  retryText: {
-    fontFamily: FontFamily.calendarMedium,
-    fontSize: 14,
-    color: Colors.textMuted,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -11,13 +11,18 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
 import CalendarStrip from '@/components/CalendarStrip';
-import TaskItem from '@/components/TaskItem';
 import PlantPreviewSheet from '@/components/PlantPreviewSheet';
-import { TASKS_BY_DAY, Task, PLANTS } from '@/constants/data';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { TASKS_BY_DAY, Task, PLANTS, TASK_TYPE_META, logHistoryEvent } from '@/constants/data';
+import Badge from '@/components/ui/Badge';
+import ProgressBar from '@/components/ui/ProgressBar';
+import ScreenHeader from '@/components/ui/ScreenHeader';
+import TaskGroup from '@/components/ui/TaskGroup';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SLIDE_DIST = SCREEN_W * 0.35;
@@ -43,12 +48,20 @@ function getTasksForDate(date: Date): Task[] {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState(today);
   const [tasks, setTasks] = useState<Task[]>(getTasksForDate(today));
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 100);
 
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
   const previewPlant = previewTask ? PLANTS.find(p => p.id === previewTask.plantId) ?? null : null;
+
+  useFocusEffect(
+    useCallback(() => {
+      setTasks(getTasksForDate(selectedDate));
+    }, [selectedDate])
+  );
 
   const scrollY      = useRef(new Animated.Value(0)).current;
   const translateX   = useRef(new Animated.Value(0)).current;
@@ -56,7 +69,22 @@ export default function HomeScreen() {
   const todayBtnOpacity = useRef(new Animated.Value(0)).current;
 
   const toggle = (id: string) =>
-    setTasks(prev => prev.map(t => (t.id === id ? { ...t, done: !t.done } : t)));
+    setTasks(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      const nowDone = !t.done;
+      if (nowDone) {
+        const meta = TASK_TYPE_META[t.type] ?? { label: t.type, icon: 'checkmark-circle', color: Colors.primary };
+        logHistoryEvent(t.plantId, {
+          id: `done_${id}_${Date.now()}`,
+          type: 'task_done',
+          label: meta.label,
+          date: new Date().toISOString(),
+          icon: meta.icon,
+          color: meta.color,
+        });
+      }
+      return { ...t, done: nowDone };
+    }));
 
   const doneCnt = tasks.filter(t => t.done).length;
 
@@ -68,9 +96,8 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
 
-    const direction = newDate > selectedDate ? 1 : -1; // 1=future/right, -1=past/left
+    const direction = newDate > selectedDate ? 1 : -1;
 
-    // Animate out current content
     Animated.parallel([
       Animated.timing(opacity, {
         toValue: 0,
@@ -85,12 +112,10 @@ export default function HomeScreen() {
         easing: Easing.inOut(Easing.ease),
       }),
     ]).start(() => {
-      // Swap content while invisible
       setSelectedDate(newDate);
       setTasks(getTasksForDate(newDate));
       translateX.setValue(direction * SLIDE_DIST);
 
-      // Animate in new content
       Animated.parallel([
         Animated.timing(opacity, {
           toValue: 1,
@@ -108,12 +133,6 @@ export default function HomeScreen() {
     });
   };
 
-  const titleOpacity = scrollY.interpolate({
-    inputRange: [0, 50],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-
   const isSameDay = (a: Date, b: Date) =>
     a.getDate() === b.getDate() &&
     a.getMonth() === b.getMonth() &&
@@ -129,7 +148,7 @@ export default function HomeScreen() {
 
       <Animated.ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 24 }]}
+        contentContainerStyle={[styles.content, { paddingTop: headerHeight + 8 }]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -137,20 +156,6 @@ export default function HomeScreen() {
         )}
         scrollEventThrottle={16}
       >
-        {/* ── HEADER ── */}
-        <View style={styles.header}>
-          <View>
-            <Animated.Text style={[styles.greeting, { opacity: titleOpacity }]}>
-              Bonjour 👋
-            </Animated.Text>
-            <Text style={styles.subtitle}>Tes plantes t'attendent</Text>
-          </View>
-          <TouchableOpacity style={styles.notifBtn} activeOpacity={0.7}>
-            <Ionicons name="notifications-outline" size={22} color={Colors.textDark} />
-            <View style={styles.notifDot} />
-          </TouchableOpacity>
-        </View>
-
         {/* ── CALENDRIER ── */}
         <View style={styles.calendarCard}>
           <Animated.View style={[styles.todayBtn, { opacity: todayBtnOpacity }]} pointerEvents={isSameDay(selectedDate, today) ? 'none' : 'auto'}>
@@ -163,29 +168,20 @@ export default function HomeScreen() {
 
         {/* ── BLOC TÂCHES ANIMÉ ── */}
         <Animated.View style={{ opacity, transform: [{ translateX }] }}>
-          {/* Section header */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{sectionLabel}</Text>
             {tasks.length > 0 && (
-              <View style={styles.progressPill}>
-                <Text style={styles.progressText}>{doneCnt}/{tasks.length} fait</Text>
-              </View>
+              <Badge label={`${doneCnt}/${tasks.length} fait`} variant="success" />
             )}
           </View>
 
-          {/* Barre de progression */}
           {tasks.length > 0 && (
-            <View style={styles.progressBar}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${(doneCnt / tasks.length) * 100}%` },
-                ]}
-              />
-            </View>
+            <ProgressBar
+              progress={tasks.length > 0 ? doneCnt / tasks.length : 0}
+              style={styles.progressBar}
+            />
           )}
 
-          {/* Groupes */}
           {tasks.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Aucune tâche ce jour 🌿</Text>
@@ -196,27 +192,16 @@ export default function HomeScreen() {
                 const groupTasks = tasks.filter(t => t.type === group.type);
                 if (!groupTasks.length) return null;
                 return (
-                  <View key={group.type} style={styles.group}>
-                    <View style={styles.groupHeader}>
-                      <View style={[styles.groupIcon, { backgroundColor: group.iconBg }]}>
-                        <Ionicons name={group.iconName} size={17} color={group.iconColor} />
-                      </View>
-                      <Text style={styles.groupLabel}>{group.label}</Text>
-                      <View style={styles.countBadge}>
-                        <Text style={styles.countText}>{groupTasks.length}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.taskList}>
-                      {groupTasks.map(t => (
-                        <TaskItem
-                          key={t.id}
-                          task={t}
-                          onToggle={toggle}
-                          onPhotoPress={setPreviewTask}
-                        />
-                      ))}
-                    </View>
-                  </View>
+                  <TaskGroup
+                    key={group.type}
+                    label={group.label}
+                    iconName={group.iconName}
+                    iconColor={group.iconColor}
+                    iconBg={group.iconBg}
+                    tasks={groupTasks}
+                    onToggle={toggle}
+                    onPhotoPress={setPreviewTask}
+                  />
                 );
               })}
             </View>
@@ -232,12 +217,37 @@ export default function HomeScreen() {
         onClose={() => setPreviewTask(null)}
       />
 
-      {/* Top fade gradient */}
-      <LinearGradient
-        colors={['rgba(245,247,240,0.3)', 'transparent']}
-        style={styles.topGradient}
-        pointerEvents="none"
-      />
+      {/* ── STICKY LIQUID GLASS HEADER ── */}
+      <View
+        style={styles.stickyHeader}
+        onLayout={e => setHeaderHeight(e.nativeEvent.layout.height)}
+        pointerEvents="box-none"
+      >
+        {/* Blur fills the full header area */}
+        <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} pointerEvents="none" />
+        {/* Tinted fill to match background hue */}
+        <View style={[StyleSheet.absoluteFill, styles.stickyHeaderBg]} pointerEvents="none" />
+        {/* Bottom border to separate from content */}
+        <View style={[StyleSheet.absoluteFill, styles.stickyHeaderBorder]} pointerEvents="none" />
+
+        <View style={[styles.stickyHeaderContent, { paddingTop: insets.top + 16 }]}>
+          <ScreenHeader
+            title="Bonjour 👋"
+            subtitle="Tes plantes t'attendent"
+            titleSize={28}
+            style={{ marginBottom: 0 }}
+            right={
+              <TouchableOpacity
+                style={styles.avatarBtn}
+                onPress={() => router.push('/profile' as any)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.avatarText}>FG</Text>
+              </TouchableOpacity>
+            }
+          />
+        </View>
+      </View>
     </View>
   );
 }
@@ -247,56 +257,41 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20 },
 
-  topGradient: {
+  // ── Sticky glass header ──
+  stickyHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 35,
     zIndex: 10,
   },
+  stickyHeaderBg: {
+    backgroundColor: 'rgba(245,247,240,0.55)',
+  },
+  stickyHeaderBorder: {
+    bottom: 0,
+    top: undefined,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  stickyHeaderContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+  },
 
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  greeting: {
-    fontFamily: FontFamily.titleDisplay,
-    fontSize: 28,
-    color: Colors.textDark,
-    lineHeight: 34,
-  },
-  subtitle: {
-    fontFamily: FontFamily.bodyRegular,
-    fontSize: 14,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  notifBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.white,
+  // ── Avatar button ──
+  avatarBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 2,
   },
-  notifDot: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.orange,
-    borderWidth: 1.5,
-    borderColor: Colors.white,
+  avatarText: {
+    fontFamily: FontFamily.calendarBold,
+    fontSize: 14,
+    color: Colors.textDark,
   },
 
   calendarCard: {
@@ -337,71 +332,12 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: Colors.textDark,
   },
-  progressPill: {
-    backgroundColor: Colors.primary + '40',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  progressText: {
-    fontFamily: FontFamily.calendarBold,
-    fontSize: 12,
-    color: Colors.textDark,
-  },
 
   progressBar: {
-    height: 5,
-    backgroundColor: Colors.white,
-    borderRadius: 3,
     marginBottom: 20,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: Colors.primary,
-    borderRadius: 3,
   },
 
   groups: { gap: 16 },
-  group: {
-    backgroundColor: '#E8EDE4',
-    borderRadius: 20,
-    padding: 12,
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
-  },
-  groupIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  groupLabel: {
-    fontFamily: FontFamily.nameSemiBold,
-    fontSize: 16,
-    color: Colors.textDark,
-    flex: 1,
-  },
-  countBadge: {
-    minWidth: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  countText: {
-    fontFamily: FontFamily.calendarBold,
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  taskList: { gap: 8 },
 
   emptyState: {
     paddingVertical: 32,
