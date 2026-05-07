@@ -63,7 +63,7 @@ export default function HomeScreen() {
     }, [selectedDate])
   );
 
-  const scrollY      = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
   const translateX   = useRef(new Animated.Value(0)).current;
   const opacity      = useRef(new Animated.Value(1)).current;
   const todayBtnOpacity = useRef(new Animated.Value(0)).current;
@@ -248,6 +248,12 @@ export default function HomeScreen() {
           />
         </View>
       </View>
+
+      <LinearGradient
+        colors={['rgba(245,247,240,0.3)', 'transparent']}
+        style={styles.topGradient}
+        pointerEvents="none"
+      />
     </View>
   );
 }
@@ -273,6 +279,12 @@ const styles = StyleSheet.create({
     top: undefined,
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  topGradient: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: 35,
+    zIndex: 10,
   },
   stickyHeaderContent: {
     paddingHorizontal: 20,

@@ -10,6 +10,7 @@ import {
   Dimensions,
   ScrollView,
   TextInput,
+  Alert,
 } from 'react-native';
 import { FontFamily } from '@/constants/fonts';
 import { BlurView } from 'expo-blur';
@@ -17,11 +18,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
 import { ANTHROPIC_API_KEY, AI_MODEL, SYSTEM_PROMPT } from '@/constants/api';
+
+// Lazy load — not available in Expo Go, requires native build
+let SpeechModule: any = null;
+try {
+  SpeechModule = require('expo-speech-recognition').ExpoSpeechRecognitionModule;
+} catch {
+  // Expo Go: native module not available
+}
 import AIHero from '@/components/ai/AIHero';
 import ChatBubble, { ChatMessage, TypingDots } from '@/components/ai/ChatBubble';
 import ChatInput from '@/components/ai/ChatInput';
+import AIScanCamera from '@/components/ai/AIScanCamera';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const DISMISS_THRESHOLD = 100;
@@ -39,17 +48,34 @@ type Props = {
   onClose: () => void;
   plantContext?: PlantContext;
   onOpenCamera?: (onPhoto: (uri: string) => void) => void;
+  onOpenScanCamera?: () => void;
 };
 
-export default function AISheet({ visible, onClose, plantContext, onOpenCamera }: Props) {
+export default function AISheet({ visible, onClose, plantContext, onOpenCamera, onOpenScanCamera }: Props) {
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(SCREEN_H)).current;
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [scanCamVisible, setScanCamVisible] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
+
+  // ── Voice recognition events (no-op if native module unavailable) ──
+  useEffect(() => {
+    if (!SpeechModule) return;
+    const subs = [
+      SpeechModule.addListener('result', (e: any) => {
+        const transcript = e.results?.[0]?.transcript ?? '';
+        if (transcript) setInput(transcript);
+      }),
+      SpeechModule.addListener('end', () => setIsRecording(false)),
+      SpeechModule.addListener('error', () => setIsRecording(false)),
+    ];
+    return () => subs.forEach((s: any) => s?.remove?.());
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -64,7 +90,15 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
     }
   }, [visible]);
 
-  const dismiss = () => {
+  const stopRecording = () => {
+    if (isRecording) {
+      SpeechModule?.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const dismiss = (onComplete?: () => void) => {
+    stopRecording();
     Animated.timing(translateY, {
       toValue: SCREEN_H,
       duration: 320,
@@ -74,13 +108,14 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
       setMessages([]);
       setPendingImage(null);
       onClose();
+      onComplete?.();
     });
   };
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_, g) => { if (g.dy > 0) translateY.setValue(g.dy); },
       onPanResponderRelease: (_, g) => {
         if (g.dy > DISMISS_THRESHOLD || g.vy > 0.5) dismiss();
@@ -104,7 +139,6 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
       imageUri: pendingImage || undefined,
     };
 
-    // Capture history BEFORE the state update (setMessages is async)
     const historySnapshot = messages;
 
     setMessages(prev => [...prev, userMsg]);
@@ -114,9 +148,6 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
     scrollToBottom();
 
     try {
-      // ── Build prior conversation for multi-turn context ──
-      // Images from previous turns can't be re-encoded cheaply, so they're
-      // represented as a text note — the current turn sends the real image.
       const priorMessages = historySnapshot.map(msg => ({
         role: msg.role as 'user' | 'assistant',
         content: [
@@ -129,7 +160,6 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
         ],
       }));
 
-      // ── Build current message content ──
       const currentContent: Array<
         | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
         | { type: 'text'; text: string }
@@ -154,7 +184,6 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
         text: text || (userMsg.imageUri ? "What is this plant?" : ''),
       });
 
-      // ── API call ──
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -198,18 +227,31 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
     }
   };
 
-  const handleCamera = async () => {
-    if (onOpenCamera) {
-      onOpenCamera((uri: string) => {
-        setPendingImage(uri);
-        setTimeout(() => textInputRef.current?.focus(), 200);
-      });
+  const handleMic = async () => {
+    if (!SpeechModule) {
+      Alert.alert(
+        'Reconnaissance vocale',
+        'Cette fonctionnalité nécessite un build natif. Lance "npx expo run:ios" une fois pour l\'activer.',
+      );
+      return;
+    }
+    if (isRecording) {
+      SpeechModule.stop();
+      setIsRecording(false);
+      return;
+    }
+    const { granted } = await SpeechModule.requestPermissionsAsync();
+    if (!granted) return;
+    setInput('');
+    setIsRecording(true);
+    SpeechModule.start({ lang: 'fr-FR', interimResults: true, maxAlternatives: 1 });
+  };
+
+  const handleCamera = () => {
+    if (onOpenScanCamera) {
+      dismiss(onOpenScanCamera);
     } else {
-      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
-      if (!result.canceled && result.assets[0]) {
-        setPendingImage(result.assets[0].uri);
-        setTimeout(() => textInputRef.current?.focus(), 200);
-      }
+      setScanCamVisible(true);
     }
   };
 
@@ -217,7 +259,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
   if (!visible) return null;
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={dismiss} statusBarTranslucent>
+    <Modal visible transparent animationType="none" onRequestClose={() => dismiss()} statusBarTranslucent>
       <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateY }] }]}>
 
         <BlurView intensity={88} tint="systemUltraThinMaterialLight" style={StyleSheet.absoluteFill} />
@@ -235,7 +277,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
           <View style={styles.handle} />
         </View>
 
-        <TouchableOpacity style={[styles.closeBtn, { top: insets.top + 8 }]} onPress={dismiss} activeOpacity={0.7}>
+        <TouchableOpacity style={[styles.closeBtn, { top: insets.top + 8 }]} onPress={() => dismiss()} activeOpacity={0.7}>
           <Ionicons name="close" size={16} color="rgba(60,60,67,0.7)" />
         </TouchableOpacity>
 
@@ -281,13 +323,24 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera }
           onRemovePendingImage={() => setPendingImage(null)}
           onSend={handleSend}
           onCamera={handleCamera}
-          onMic={() => textInputRef.current?.focus()}
+          onMic={handleMic}
+          isRecording={isRecording}
           inputRef={textInputRef}
           paddingBottom={insets.bottom + 16}
           placeholder={plantContext ? `Une question sur ${plantContext.name} ?` : 'Une question ?'}
         />
 
       </Animated.View>
+
+      <AIScanCamera
+        visible={scanCamVisible}
+        onClose={() => setScanCamVisible(false)}
+        onPhoto={(uri) => {
+          setScanCamVisible(false);
+          setPendingImage(uri);
+          setTimeout(() => textInputRef.current?.focus(), 200);
+        }}
+      />
     </Modal>
   );
 }
@@ -302,7 +355,7 @@ const styles = StyleSheet.create({
   },
   dragZone: {
     alignItems: 'center',
-    paddingBottom: 4,
+    paddingBottom: 12,
   },
   handle: {
     width: 36,
@@ -341,7 +394,7 @@ const styles = StyleSheet.create({
 
   plantBannerWrap: {
     marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 52,
     marginBottom: 4,
   },
   plantBanner: {

@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Planta",
-    "slug": "planta",
-    "scheme": "planta",
+    "name": "Florus",
+    "slug": "florus",
+    "scheme": "florus",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -33,20 +33,20 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Planta a besoin de la caméra pour identifier vos plantes."
+          "cameraPermission": "Florus a besoin de la caméra pour identifier vos plantes."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Planta accède à vos photos pour ajouter vos plantes."
+          "photosPermission": "Florus accède à vos photos pour ajouter vos plantes."
         }
       ],
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Planta utilise le micro pour transcrire vos questions.",
-          "speechRecognitionPermission": "Planta utilise la reconnaissance vocale pour transcrire vos questions."
+          "microphonePermission": "Florus utilise le micro pour transcrire vos questions.",
+          "speechRecognitionPermission": "Florus utilise la reconnaissance vocale pour transcrire vos questions."
         }
       ]
     ]

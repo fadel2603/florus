@@ -1,8 +1,8 @@
-# Planta — Claude Code Context
+# Florus — Claude Code Context
 
 ## Project
 
-**Planta** — iOS/Android plant care app with AI features.
+**Florus** — iOS/Android plant care app with AI features.
 Built with React Native + Expo SDK 54.
 
 **User profile**: Designer/Product owner building with Claude Code. Not a developer.
@@ -160,7 +160,7 @@ Custom tab bar: `LiquidGlassTabBar.tsx` (iOS 26 Liquid Glass pill)
 - Model: `claude-sonnet-4-20250514`
 - Multi-turn conversation with history
 - Vision support (camera + gallery)
-- System prompt: "You are Planta, an expert AI assistant specialized in plant care…"
+- System prompt: "You are Florus, an expert AI assistant specialized in plant care…"
 - Accessed from home screen via sparkle button
 
 ### 2. Auto plant care planning 🚧 Todo

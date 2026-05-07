@@ -7,7 +7,10 @@ import {
   Animated,
   PanResponder,
   Modal,
+  Dimensions,
 } from 'react-native';
+
+const SCREEN_H = Dimensions.get('window').height;
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontFamily } from '@/constants/fonts';
@@ -19,7 +22,7 @@ type Props = {
   onGallery: () => void;
 };
 
-const SLIDE_OUT = 360;
+const SLIDE_OUT = SCREEN_H * 0.6;
 const DISMISS_THRESHOLD = 60;
 
 export default function AddPlantSheet({ visible, onClose, onCamera, onGallery }: Props) {
@@ -139,6 +142,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    minHeight: SCREEN_H * 0.5,
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
@@ -174,14 +178,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#1a1a1a',
     textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
+    marginTop: 16,
+    marginBottom: 32,
   },
   optionCell: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    paddingVertical: 14,
+    paddingVertical: 20,
   },
   optionIconWrap: {
     width: 48,

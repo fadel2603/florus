@@ -1,13 +1,13 @@
-import React, { RefObject } from 'react';
+import React, { RefObject, useEffect, useRef } from 'react';
 import {
   View,
-  Text,
   TextInput,
   TouchableOpacity,
   Image,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FontFamily } from '@/constants/fonts';
@@ -28,6 +28,27 @@ const waveStyles = StyleSheet.create({
   bar: { width: 3.5, borderRadius: 2, backgroundColor: 'rgba(60,60,67,0.45)' },
 });
 
+function RecordingMic() {
+  const pulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.2, duration: 500, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  return (
+    <Animated.View style={{ transform: [{ scale: pulse }] }}>
+      <Ionicons name="mic" size={24} color="#FF3B30" />
+    </Animated.View>
+  );
+}
+
 interface ChatInputProps {
   input: string;
   onChangeText: (text: string) => void;
@@ -36,6 +57,7 @@ interface ChatInputProps {
   onSend: () => void;
   onCamera: () => void;
   onMic: () => void;
+  isRecording?: boolean;
   inputRef: RefObject<TextInput | null>;
   paddingBottom: number;
   placeholder?: string;
@@ -49,6 +71,7 @@ export default function ChatInput({
   onSend,
   onCamera,
   onMic,
+  isRecording = false,
   inputRef,
   paddingBottom,
   placeholder = 'Une question ?',
@@ -66,26 +89,27 @@ export default function ChatInput({
             </TouchableOpacity>
           </View>
         )}
-        <View style={styles.pill}>
+        <View style={[styles.pill, isRecording && styles.pillRecording]}>
           <TextInput
             ref={inputRef}
             style={styles.field}
             value={input}
             onChangeText={onChangeText}
-            placeholder={placeholder}
-            placeholderTextColor="rgba(255,255,255,0.6)"
+            placeholder={isRecording ? 'Écoute en cours…' : placeholder}
+            placeholderTextColor={isRecording ? 'rgba(255,59,48,0.5)' : 'rgba(255,255,255,0.6)'}
             selectionColor="#5B9E3B"
             returnKeyType="send"
             onSubmitEditing={onSend}
+            editable={!isRecording}
           />
           <View style={styles.icons}>
-            {hasSendable ? (
+            {hasSendable && !isRecording ? (
               <TouchableOpacity onPress={onSend} style={styles.sendBtn} activeOpacity={0.8}>
                 <Ionicons name="arrow-up" size={20} color="#1C1C1E" />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity onPress={onMic} activeOpacity={0.7}>
-                <WaveformBars />
+                {isRecording ? <RecordingMic /> : <WaveformBars />}
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onCamera} activeOpacity={0.7}>
@@ -119,11 +143,14 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 68,
+    height: 80,
     borderRadius: 100,
     backgroundColor: 'rgba(255,255,255,0.20)',
     paddingLeft: 32,
     paddingRight: 24,
+  },
+  pillRecording: {
+    backgroundColor: 'rgba(255,59,48,0.08)',
   },
   field: {
     flex: 1,

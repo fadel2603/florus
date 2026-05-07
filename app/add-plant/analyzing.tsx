@@ -67,7 +67,7 @@ async function analyzePhoto(photoUri: string): Promise<AIPlantAnalysis | null> {
     const jsonStr = jsonMatch ? jsonMatch[1].trim() : text.trim();
     return JSON.parse(jsonStr) as AIPlantAnalysis;
   } catch (e) {
-    console.warn('[Planta] Plant analysis failed:', e);
+    console.warn('[Florus] Plant analysis failed:', e);
     return null;
   }
 }

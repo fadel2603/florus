@@ -74,7 +74,8 @@ const DIAG_CONFIG = {
 };
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const HERO_H = 360;
+const HERO_H = SCREEN_H * 0.38;
+const CARD_OVERLAP = 44;
 const EDIT_SHEET_H = 380;
 const SCAN_SHEET_INIT_Y = SCREEN_H * 0.95;
 const DISMISS_THRESHOLD = 80;
@@ -118,7 +119,7 @@ async function runScanAnalysis(
   try {
     const base64 = await photoToBase64(photoUri);
     const systemPrompt =
-      `You are Planta, an expert botanist. Analyze this plant photo in the context of: ${plantName} (${species}). ` +
+      `You are Florus, an expert botanist. Analyze this plant photo in the context of: ${plantName} (${species}). ` +
       `Look for diseases, pests, watering issues, light problems, nutrient deficiencies. ` +
       `Respond ONLY with valid JSON, no markdown, no code fences:\n` +
       `{"diagnosis":"healthy|warning|critical","summary":"one sentence in French","issues":["issue in French"],"recommendations":["action in French"],"urgentTask":{"type":"water|observe|treat|fertilize","title":"title in French","daysFromNow":2}}\n` +
@@ -141,7 +142,7 @@ async function runScanAnalysis(
     const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     return JSON.parse(match ? match[1].trim() : text.trim()) as ScanDiagnosis;
   } catch (e) {
-    console.warn('[Planta] Scan failed:', e);
+    console.warn('[Florus] Scan failed:', e);
     return null;
   }
 }
@@ -162,7 +163,7 @@ async function askPlantQuestion(
     headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
       model: AI_MODEL, max_tokens: 400,
-      system: `Tu es Planta, expert botaniste. Cette photo montre un(e) ${plantName} (${species}). ${ctx} Réponds à la question de façon concise en français.`,
+      system: `Tu es Florus, expert botaniste. Cette photo montre un(e) ${plantName} (${species}). ${ctx} Réponds à la question de façon concise en français.`,
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
         { type: 'text', text: question },
@@ -233,6 +234,7 @@ export default function PlantDetailScreen() {
   const scanPulseAnim = useRef(new Animated.Value(0)).current;
   const scanResultTranslateY = useRef(new Animated.Value(SCAN_SHEET_INIT_Y)).current;
   const scanResultBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   const scanApiDoneRef = useRef(false);
   const scanAnimDoneRef = useRef(false);
@@ -505,13 +507,137 @@ export default function PlantDetailScreen() {
   const scanSpin = scanSpinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const diagCfg = scanDiagnosis ? (DIAG_CONFIG[scanDiagnosis.diagnosis] ?? DIAG_CONFIG.warning) : null;
 
+  const heroParallax = scrollY.interpolate({
+    inputRange: [0, HERO_H],
+    outputRange: [0, -HERO_H * 0.25],
+    extrapolate: 'clamp',
+  });
+  const heroFadeOpacity = scrollY.interpolate({
+    inputRange: [0, Math.max(HERO_H - CARD_OVERLAP - 120, 0), HERO_H - CARD_OVERLAP],
+    outputRange: [0, 0, 0.6],
+    extrapolate: 'clamp',
+  });
+
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* ── STICKY NAV BUTTONS (outside ScrollView — always visible) ── */}
+      {/* ── HERO (absolute, parallax image inside) ── */}
+      <View style={styles.heroAbsolute}>
+        <Animated.Image
+          source={{ uri: plant.image }}
+          style={[styles.heroAbsoluteImg, { transform: [{ translateY: heroParallax }] }]}
+        />
+        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.38)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0.5 }} end={{ x: 0, y: 1 }} />
+        <LinearGradient colors={['rgba(0,0,0,0.38)', 'transparent']} style={styles.heroGradientTop} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />
+        {plant.careStatus && (
+          <View style={[styles.badge, { top: insets.top + 10 }]}>
+            <Text style={styles.badgeText}>{plant.careStatus}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── HERO FADE OVERLAY (fades photo as card rises) ── */}
+      <Animated.View style={[styles.heroFadeOverlay, { opacity: heroFadeOpacity }]} pointerEvents="none" />
+
+      {/* ── SCROLL ── */}
+      <Animated.ScrollView
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        showsVerticalScrollIndicator={false}
+        style={styles.scroll}
+      >
+        {/* Transparent spacer — hero shows through */}
+        <View style={{ height: HERO_H - CARD_OVERLAP }} />
+
+        {/* ── CONTENT CARD ── */}
+        <View style={styles.contentCard}>
+          <View style={styles.body}>
+            <View style={styles.infoRow}>
+              <View style={styles.infoMain}>
+                <Text style={styles.plantName}>{plant.name}</Text>
+                <Text style={styles.species}>{plant.species}</Text>
+                <Text style={styles.meta}>
+                  {plant.location === 'outdoor' ? 'Extérieur' : 'Intérieur'} ·{' '}
+                  <Text style={styles.metaPhotos} onPress={() => setGalleryOpen(true)}>3 📸</Text>
+                </Text>
+              </View>
+            </View>
+
+            <LinearGradient
+              colors={[Colors.primaryDark, Colors.primary, '#D4F878']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.aiQuestionBtnGradient}
+            >
+              <TouchableOpacity
+                style={styles.aiQuestionBtn}
+                onPress={() => setAiVisible(true)}
+                activeOpacity={0.82}
+              >
+                <Ionicons name="sparkles" size={17} color={Colors.textDark} />
+                <Text style={styles.aiQuestionBtnLabel}>Poser une question</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+
+            {/* Glass stat cards */}
+            <View style={styles.statsRow}>
+              <View style={styles.glassOuter}>
+                <View style={styles.glassInner}>
+                  {Platform.OS === 'ios' && <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />}
+                  <View style={[StyleSheet.absoluteFill, styles.glassFill]} />
+                  <Ionicons name="water" size={22} color="#4FC3F7" />
+                  <Text style={styles.statValue}>{plant.waterFrequency}</Text>
+                  <Text style={styles.statLabel}>Arrosage</Text>
+                </View>
+              </View>
+              <View style={styles.glassOuter}>
+                <View style={styles.glassInner}>
+                  {Platform.OS === 'ios' && <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />}
+                  <View style={[StyleSheet.absoluteFill, styles.glassFill]} />
+                  <Ionicons name="time" size={22} color={Colors.orange} />
+                  <Text style={styles.statValue}>{plant.lastWatered}</Text>
+                  <Text style={styles.statLabel}>Dernier soin</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Glass timeline */}
+            <Text style={styles.timelineTitle}>Historique des soins</Text>
+            <View style={styles.timelineGlassOuter}>
+              <View style={styles.timelineGlassInner}>
+                {Platform.OS === 'ios' && <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />}
+                <View style={[StyleSheet.absoluteFill, styles.glassFill]} />
+                {history.length === 0 ? (
+                  <View style={styles.emptyHistory}>
+                    <Ionicons name="leaf-outline" size={28} color={Colors.textMuted} />
+                    <Text style={styles.emptyHistoryText}>Aucun historique pour le moment</Text>
+                  </View>
+                ) : (
+                  history.map((event, i) => (
+                    <TimelineItem
+                      key={event.id}
+                      icon={event.icon as any}
+                      iconColor={event.color}
+                      action={event.label}
+                      date={formatHistoryDate(event.date)}
+                      isLast={i === history.length - 1}
+                    />
+                  ))
+                )}
+              </View>
+            </View>
+          </View>
+          <View style={{ height: 48 }} />
+        </View>
+      </Animated.ScrollView>
+
+      {/* ── STICKY NAV BUTTONS (always on top) ── */}
       <View style={[styles.stickyNav, { top: insets.top + 10 }]} pointerEvents="box-none">
         <View style={styles.heroBtnShadow}>
           <View style={styles.heroBtnGlass}>
@@ -532,93 +658,6 @@ export default function PlantDetailScreen() {
           </View>
         </View>
       </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
-        {/* ── HERO ── */}
-        <View style={styles.heroWrapper}>
-          <Image source={{ uri: plant.image }} style={styles.hero} />
-          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.38)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0.5 }} end={{ x: 0, y: 1 }} />
-          <LinearGradient colors={['rgba(0,0,0,0.38)', 'transparent']} style={styles.heroGradientTop} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />
-
-          {plant.careStatus && (
-            <View style={[styles.badge, { top: insets.top + 10 }]}>
-              <Text style={styles.badgeText}>{plant.careStatus}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* ── BODY ── */}
-        <View style={styles.body}>
-          <View style={styles.infoRow}>
-            <View style={styles.infoMain}>
-              <Text style={styles.plantName}>{plant.name}</Text>
-              <Text style={styles.species}>{plant.species}</Text>
-              <Text style={styles.meta}>
-                {plant.location === 'outdoor' ? 'Extérieur' : 'Intérieur'} ·{' '}
-                <Text style={styles.metaPhotos} onPress={() => setGalleryOpen(true)}>3 📸</Text>
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.aiQuestionBtn}
-            onPress={() => setAiVisible(true)}
-            activeOpacity={0.82}
-          >
-            <Ionicons name="sparkles" size={17} color={Colors.textDark} />
-            <Text style={styles.aiQuestionBtnLabel}>Poser une question</Text>
-          </TouchableOpacity>
-
-          {/* Glass stat cards */}
-          <View style={styles.statsRow}>
-            <View style={styles.glassOuter}>
-              <View style={styles.glassInner}>
-                {Platform.OS === 'ios' && <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />}
-                <View style={[StyleSheet.absoluteFill, styles.glassFill]} />
-                <Ionicons name="water" size={22} color="#4FC3F7" />
-                <Text style={styles.statValue}>{plant.waterFrequency}</Text>
-                <Text style={styles.statLabel}>Arrosage</Text>
-              </View>
-            </View>
-            <View style={styles.glassOuter}>
-              <View style={styles.glassInner}>
-                {Platform.OS === 'ios' && <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />}
-                <View style={[StyleSheet.absoluteFill, styles.glassFill]} />
-                <Ionicons name="time" size={22} color={Colors.orange} />
-                <Text style={styles.statValue}>{plant.lastWatered}</Text>
-                <Text style={styles.statLabel}>Dernier soin</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Glass timeline */}
-          <Text style={styles.timelineTitle}>Historique des soins</Text>
-          <View style={styles.timelineGlassOuter}>
-            <View style={styles.timelineGlassInner}>
-              {Platform.OS === 'ios' && <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />}
-              <View style={[StyleSheet.absoluteFill, styles.glassFill]} />
-              {history.length === 0 ? (
-                <View style={styles.emptyHistory}>
-                  <Ionicons name="leaf-outline" size={28} color={Colors.textMuted} />
-                  <Text style={styles.emptyHistoryText}>Aucun historique pour le moment</Text>
-                </View>
-              ) : (
-                history.map((event, i) => (
-                  <TimelineItem
-                    key={event.id}
-                    icon={event.icon as any}
-                    iconColor={event.color}
-                    action={event.label}
-                    date={formatHistoryDate(event.date)}
-                    isLast={i === history.length - 1}
-                  />
-                ))
-              )}
-            </View>
-          </View>
-        </View>
-        <View style={{ height: 48 }} />
-      </ScrollView>
 
       {/* ── GALLERY MODAL ── */}
       <Modal visible={galleryOpen} transparent animationType="slide" onRequestClose={() => setGalleryOpen(false)}>
@@ -755,7 +794,7 @@ export default function PlantDetailScreen() {
               <TouchableOpacity onPress={dismissScanResult} style={styles.sheetCloseBtn}>
                 <Ionicons name="close" size={17} color="#1a1a1a" />
               </TouchableOpacity>
-              <Text style={styles.scanSheetTitle}>Diagnostic Planta</Text>
+              <Text style={styles.scanSheetTitle}>Diagnostic Florus</Text>
               <View style={{ width: 36 }} />
             </View>
 
@@ -962,10 +1001,36 @@ export default function PlantDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
-  scroll: { flex: 1 },
+  scroll: { flex: 1, backgroundColor: 'transparent' },
 
-  heroWrapper: { height: HERO_H, position: 'relative' },
-  hero: { width: '100%', height: HERO_H, backgroundColor: Colors.border },
+  heroAbsolute: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: HERO_H,
+    overflow: 'hidden',
+  },
+  heroAbsoluteImg: {
+    width: '100%',
+    height: HERO_H * 1.3,
+    backgroundColor: Colors.border,
+  },
+  heroFadeOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: HERO_H,
+    backgroundColor: Colors.background,
+  },
+  contentCard: {
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.10,
+    shadowRadius: 20,
+    elevation: 12,
+    minHeight: SCREEN_H * 0.65,
+  },
   heroGradientTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 110 },
   stickyNav: {
     position: 'absolute',
@@ -1003,7 +1068,7 @@ const styles = StyleSheet.create({
   badge: { position: 'absolute', right: 16, backgroundColor: Colors.orange, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
   badgeText: { fontSize: 12, fontFamily: FontFamily.labelMedium, color: Colors.white },
 
-  body: { padding: 20 },
+  body: { padding: 20, paddingTop: 24 },
   infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
   infoMain: { flex: 1 },
   plantName: { fontFamily: FontFamily.titleDisplay, fontSize: 28, color: Colors.textDark },
@@ -1011,17 +1076,19 @@ const styles = StyleSheet.create({
   meta: { fontFamily: FontFamily.bodyRegular, fontSize: 12, color: Colors.textMuted, marginTop: 5 },
   metaPhotos: { color: Colors.textDark, fontFamily: FontFamily.calendarBold },
 
+  aiQuestionBtnGradient: {
+    borderRadius: 15,
+    padding: 1.5,
+    marginBottom: 16,
+  },
   aiQuestionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     height: 48,
-    borderRadius: 14,
-    backgroundColor: Colors.sectionBg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 16,
+    borderRadius: 13,
+    backgroundColor: Colors.background,
   },
   aiQuestionBtnLabel: {
     fontFamily: FontFamily.calendarBold,

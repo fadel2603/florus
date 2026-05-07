@@ -48,7 +48,7 @@ export default function ProfileScreen() {
             <Text style={styles.userEmail}>fadel2603@gmail.com</Text>
           </View>
           <View style={styles.proBadge}>
-            <Text style={styles.proBadgeText}>Planta Pro 🌿</Text>
+            <Text style={styles.proBadgeText}>Florus Pro 🌿</Text>
           </View>
         </View>
 

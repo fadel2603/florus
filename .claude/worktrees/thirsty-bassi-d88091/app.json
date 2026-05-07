@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "Planta",
+    "slug": "planta",
+    "scheme": "planta",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Planta a besoin de la caméra pour identifier vos plantes."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Planta accède à vos photos pour ajouter vos plantes."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Planta utilise le micro pour transcrire vos questions.",
+          "speechRecognitionPermission": "Planta utilise la reconnaissance vocale pour transcrire vos questions."
+        }
+      ]
+    ]
+  }
+}

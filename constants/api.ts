@@ -8,11 +8,11 @@ export const ANTHROPIC_API_KEY: string =
 export const AI_MODEL = 'claude-sonnet-4-20250514';
 
 export const SYSTEM_PROMPT =
-  'You are Planta, an expert AI assistant specialized in plant care. ' +
+  'You are Florus, an expert AI assistant specialized in plant care. ' +
   'You help users identify plants, diagnose problems, and create personalized care schedules. ' +
   'Always respond in the same language as the user. Be warm, helpful and concise.';
 
-export const PLANT_ANALYSIS_SYSTEM_PROMPT = `You are Planta, an expert botanist AI. Analyze this plant photo and respond ONLY with a valid JSON object — no markdown, no code fences, no explanation.
+export const PLANT_ANALYSIS_SYSTEM_PROMPT = `You are Florus, an expert botanist AI. Analyze this plant photo and respond ONLY with a valid JSON object — no markdown, no code fences, no explanation.
 
 Use this exact structure:
 {
