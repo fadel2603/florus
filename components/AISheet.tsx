@@ -309,6 +309,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
               contentContainerStyle={styles.chatContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
             >
               {messages.map(msg => <ChatBubble key={msg.id} message={msg} />)}
               {loading && <TypingDots />}
