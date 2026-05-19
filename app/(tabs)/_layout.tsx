@@ -1,15 +1,35 @@
-import { Tabs } from 'expo-router';
-import LiquidGlassTabBar from '@/components/LiquidGlassTabBar';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 export default function TabLayout() {
   return (
-    <Tabs
-      tabBar={(props) => <LiquidGlassTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
+    <NativeTabs
+      tintColor="#8DC93A"
+      minimizeBehavior="onScrollDown"
     >
-      <Tabs.Screen name="index" />
-      <Tabs.Screen name="plants" />
-      <Tabs.Screen name="scanner" />
-    </Tabs>
+      <NativeTabs.Trigger
+        name="index"
+        options={{
+          title: 'Accueil',
+          icon: { sf: 'house' },
+          selectedIcon: { sf: 'house.fill' },
+        }}
+      />
+      <NativeTabs.Trigger
+        name="plants"
+        options={{
+          title: 'Plantes',
+          icon: { sf: 'leaf' },
+          selectedIcon: { sf: 'leaf.fill' },
+        }}
+      />
+      <NativeTabs.Trigger
+        name="scanner"
+        options={{
+          title: 'IA',
+          icon: { sf: 'sparkles' },
+          selectedIcon: { sf: 'sparkles' },
+        }}
+      />
+    </NativeTabs>
   );
 }
