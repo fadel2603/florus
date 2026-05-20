@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+
 import { ANTHROPIC_API_KEY, AI_MODEL, SYSTEM_PROMPT } from '@/constants/api';
 
 // Lazy load — not available in Expo Go, requires native build
@@ -53,11 +53,12 @@ type Props = {
   /** "modal" (default): slide-up overlay with handle and close button.
    *  "screen": renders as a plain screen — no animation, no modal, tab bar stays visible. */
   mode?: 'modal' | 'screen';
+  /** Extra bottom padding for screen mode — pass useBottomTabBarHeight() from the tab screen */
+  tabBarHeight?: number;
 };
 
-export default function AISheet({ visible, onClose, plantContext, onOpenCamera, onOpenScanCamera, mode = 'modal' }: Props) {
+export default function AISheet({ visible, onClose, plantContext, onOpenCamera, onOpenScanCamera, mode = 'modal', tabBarHeight = 0 }: Props) {
   const insets = useSafeAreaInsets();
-  const tabBarHeight = useBottomTabBarHeight();
   const translateY = useRef(new Animated.Value(SCREEN_H)).current;
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
