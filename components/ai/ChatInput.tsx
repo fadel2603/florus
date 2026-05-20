@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FontFamily } from '@/constants/fonts';
 
 function WaveformBars() {
-  const heights = [14, 30, 20, 36, 24];
+  const heights = [10, 22, 15, 28, 18, 24, 12];
   return (
     <View style={waveStyles.row}>
       {heights.map((h, i) => (
@@ -25,7 +25,7 @@ function WaveformBars() {
 
 const waveStyles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  bar: { width: 3.5, borderRadius: 2, backgroundColor: 'rgba(60,60,67,0.45)' },
+  bar: { width: 3, borderRadius: 2, backgroundColor: 'rgba(60,60,67,0.35)' },
 });
 
 function RecordingMic() {
@@ -44,7 +44,7 @@ function RecordingMic() {
 
   return (
     <Animated.View style={{ transform: [{ scale: pulse }] }}>
-      <Ionicons name="mic" size={24} color="#FF3B30" />
+      <Ionicons name="mic" size={22} color="#FF3B30" />
     </Animated.View>
   );
 }
@@ -61,6 +61,8 @@ interface ChatInputProps {
   inputRef: RefObject<TextInput | null>;
   paddingBottom: number;
   placeholder?: string;
+  /** When true, renders a more prominent "Gemini-style" pill for use as a full screen */
+  prominent?: boolean;
 }
 
 export default function ChatInput({
@@ -75,12 +77,13 @@ export default function ChatInput({
   inputRef,
   paddingBottom,
   placeholder = 'Une question ?',
+  prominent = false,
 }: ChatInputProps) {
   const hasSendable = !!input.trim() || !!pendingImage;
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.outer, { paddingBottom }]}>
+      <View style={[styles.outer, { paddingBottom }, prominent && styles.outerProminent]}>
         {pendingImage && (
           <View style={styles.pendingRow}>
             <Image source={{ uri: pendingImage }} style={styles.pendingThumb} />
@@ -89,32 +92,68 @@ export default function ChatInput({
             </TouchableOpacity>
           </View>
         )}
-        <View style={[styles.pill, isRecording && styles.pillRecording]}>
+
+        <View style={[
+          styles.pill,
+          prominent && styles.pillProminent,
+          isRecording && styles.pillRecording,
+        ]}>
+          {/* Left action — camera in prominent mode, nothing in compact */}
+          {prominent && (
+            <TouchableOpacity onPress={onCamera} style={styles.leftBtn} activeOpacity={0.7}>
+              <Ionicons name="add" size={26} color="rgba(60,60,67,0.55)" />
+            </TouchableOpacity>
+          )}
+
           <TextInput
             ref={inputRef}
-            style={styles.field}
+            style={[styles.field, prominent && styles.fieldProminent]}
             value={input}
             onChangeText={onChangeText}
             placeholder={isRecording ? 'Écoute en cours…' : placeholder}
-            placeholderTextColor={isRecording ? 'rgba(255,59,48,0.5)' : 'rgba(255,255,255,0.6)'}
+            placeholderTextColor={
+              isRecording
+                ? 'rgba(255,59,48,0.5)'
+                : prominent
+                  ? 'rgba(60,60,67,0.40)'
+                  : 'rgba(255,255,255,0.6)'
+            }
             selectionColor="#5B9E3B"
             returnKeyType="send"
             onSubmitEditing={onSend}
             editable={!isRecording}
+            multiline={prominent}
           />
+
           <View style={styles.icons}>
             {hasSendable && !isRecording ? (
               <TouchableOpacity onPress={onSend} style={styles.sendBtn} activeOpacity={0.8}>
                 <Ionicons name="arrow-up" size={20} color="#1C1C1E" />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity onPress={onMic} activeOpacity={0.7}>
-                {isRecording ? <RecordingMic /> : <WaveformBars />}
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity onPress={onMic} activeOpacity={0.7}>
+                  {isRecording ? <RecordingMic /> : (
+                    <Ionicons
+                      name="mic-outline"
+                      size={24}
+                      color={prominent ? 'rgba(60,60,67,0.50)' : 'rgba(60,60,67,0.45)'}
+                    />
+                  )}
+                </TouchableOpacity>
+                {/* Camera icon only in compact mode (prominent uses the + button) */}
+                {!prominent && (
+                  <TouchableOpacity onPress={onCamera} activeOpacity={0.7}>
+                    <Ionicons name="camera-outline" size={26} color="rgba(60,60,67,0.50)" />
+                  </TouchableOpacity>
+                )}
+                {prominent && !isRecording && (
+                  <TouchableOpacity onPress={() => {}} activeOpacity={0.7}>
+                    <WaveformBars />
+                  </TouchableOpacity>
+                )}
+              </>
             )}
-            <TouchableOpacity onPress={onCamera} activeOpacity={0.7}>
-              <Ionicons name="camera-outline" size={30} color="rgba(60,60,67,0.50)" />
-            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -125,6 +164,9 @@ export default function ChatInput({
 const styles = StyleSheet.create({
   outer: {
     paddingHorizontal: 14,
+  },
+  outerProminent: {
+    paddingHorizontal: 16,
   },
   pendingRow: {
     flexDirection: 'row',
@@ -140,6 +182,8 @@ const styles = StyleSheet.create({
   removePending: {
     marginLeft: 6,
   },
+
+  // ── Compact pill (modal mode) ──
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -152,6 +196,28 @@ const styles = StyleSheet.create({
   pillRecording: {
     backgroundColor: 'rgba(255,59,48,0.08)',
   },
+
+  // ── Prominent pill (screen mode — Gemini style) ──
+  pillProminent: {
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
+    paddingLeft: 6,
+    paddingRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+
+  leftBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   field: {
     flex: 1,
     fontFamily: FontFamily.bodyRegular,
@@ -160,10 +226,16 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     paddingBottom: 0,
   },
+  fieldProminent: {
+    fontSize: 16,
+    color: '#1C1C1E',
+    maxHeight: 100,
+  },
+
   icons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 14,
   },
   sendBtn: {
     width: 34,

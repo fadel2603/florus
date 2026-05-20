@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { ANTHROPIC_API_KEY, AI_MODEL, SYSTEM_PROMPT } from '@/constants/api';
 
 // Lazy load — not available in Expo Go, requires native build
@@ -56,6 +57,7 @@ type Props = {
 
 export default function AISheet({ visible, onClose, plantContext, onOpenCamera, onOpenScanCamera, mode = 'modal' }: Props) {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const translateY = useRef(new Animated.Value(SCREEN_H)).current;
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -320,8 +322,9 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
         onMic={handleMic}
         isRecording={isRecording}
         inputRef={textInputRef}
-        paddingBottom={insets.bottom + 16}
+        paddingBottom={mode === 'screen' ? (tabBarHeight + 8) : (insets.bottom + 16)}
         placeholder={plantContext ? `Une question sur ${plantContext.name} ?` : 'Une question ?'}
+        prominent={mode === 'screen'}
       />
 
       <AIScanCamera
