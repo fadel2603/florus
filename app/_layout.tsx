@@ -47,6 +47,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="onboarding" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
         <Stack.Screen name="plant/[id]" options={{ presentation: 'card' }} />
         <Stack.Screen name="scan-result" options={{ presentation: 'card' }} />
         <Stack.Screen name="recommendation" options={{ presentation: 'modal' }} />

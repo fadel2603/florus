@@ -1,4 +1,5 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -67,6 +68,12 @@ export default function HomeScreen() {
 
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
   const previewPlant = previewTask ? plants.find(p => p.id === previewTask.plantId) ?? null : null;
+
+  useEffect(() => {
+    AsyncStorage.getItem('@florus_onboarded').then(val => {
+      if (val !== 'true') router.replace('/onboarding' as any);
+    });
+  }, []);
 
   const loadData = useCallback(async (date: Date) => {
     if (!userId) return;
