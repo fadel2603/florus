@@ -11,9 +11,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
 import { useUser } from '@/context/UserContext';
+import { signOut } from '@/lib/auth';
 import {
   getNotifEnabled,
   setNotifEnabled,
@@ -26,7 +28,13 @@ import { fetchAllUserTasks } from '@/lib/db/tasks';
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { isPremium, userId } = useUser();
+  const { isPremium, userId, email, isAnonymous } = useUser();
+
+  const handleSignOut = async () => {
+    await signOut();
+    await AsyncStorage.removeItem('@florus_guest');
+    router.replace('/auth' as any);
+  };
 
   const [notifEnabled, setNotifEnabledState] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
@@ -70,11 +78,13 @@ export default function ProfileScreen() {
         {/* ── Avatar + User info ── */}
         <View style={styles.userCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarInitials}>FG</Text>
+            <Text style={styles.avatarInitials}>
+            {email ? email.slice(0, 2).toUpperCase() : '?'}
+          </Text>
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>Fadel Gueye</Text>
-            <Text style={styles.userEmail}>fadel2603@gmail.com</Text>
+            <Text style={styles.userName}>{email ? email.split('@')[0] : 'Invité'}</Text>
+            <Text style={styles.userEmail}>{email ?? 'Sans compte'}</Text>
           </View>
           <View style={[styles.proBadge, !isPremium && styles.proBadgeFree]}>
             <Text style={styles.proBadgeText}>{isPremium ? 'Florus Pro 🌿' : 'Gratuit'}</Text>
@@ -168,10 +178,17 @@ export default function ProfileScreen() {
         </View>
 
         {/* ── Logout ── */}
-        <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75}>
-          <Ionicons name="log-out-outline" size={18} color="#C62828" />
-          <Text style={styles.logoutText}>Se déconnecter</Text>
-        </TouchableOpacity>
+        {isAnonymous ? (
+          <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={() => router.replace('/auth' as any)}>
+            <Ionicons name="person-add-outline" size={18} color={Colors.primaryDark} />
+            <Text style={[styles.logoutText, { color: Colors.primaryDark }]}>Créer un compte</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={handleSignOut}>
+            <Ionicons name="log-out-outline" size={18} color="#C62828" />
+            <Text style={styles.logoutText}>Se déconnecter</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </View>
   );

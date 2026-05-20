@@ -1,5 +1,6 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -70,9 +71,15 @@ export default function HomeScreen() {
   const previewPlant = previewTask ? plants.find(p => p.id === previewTask.plantId) ?? null : null;
 
   useEffect(() => {
-    AsyncStorage.getItem('@florus_onboarded').then(val => {
-      if (val !== 'true') router.replace('/onboarding' as any);
-    });
+    (async () => {
+      const onboarded = await AsyncStorage.getItem('@florus_onboarded');
+      if (onboarded !== 'true') { router.replace('/onboarding' as any); return; }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const hasEmail = !!session?.user?.email;
+      const isGuest = await AsyncStorage.getItem('@florus_guest') === 'true';
+      if (!hasEmail && !isGuest) router.replace('/auth' as any);
+    })();
   }, []);
 
   const loadData = useCallback(async (date: Date) => {

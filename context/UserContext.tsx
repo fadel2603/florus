@@ -4,6 +4,8 @@ import { fetchProfile } from '@/lib/db/profile';
 
 type UserContextValue = {
   userId: string | null;
+  email: string | null;
+  isAnonymous: boolean;
   plan: 'free' | 'premium';
   isPremium: boolean;
   loading: boolean;
@@ -11,6 +13,8 @@ type UserContextValue = {
 
 const UserContext = createContext<UserContextValue>({
   userId: null,
+  email: null,
+  isAnonymous: true,
   plan: 'free',
   isPremium: false,
   loading: true,
@@ -18,13 +22,24 @@ const UserContext = createContext<UserContextValue>({
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [isAnonymous, setIsAnonymous] = useState(true);
   const [plan, setPlan] = useState<'free' | 'premium'>('free');
   const [loading, setLoading] = useState(true);
 
+  const applySession = (session: { user: { id: string; email?: string; is_anonymous?: boolean } } | null) => {
+    const uid = session?.user.id ?? null;
+    const userEmail = session?.user.email ?? null;
+    const anon = !userEmail;
+    setUserId(uid);
+    setEmail(userEmail);
+    setIsAnonymous(anon);
+    return uid;
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const uid = session?.user.id ?? null;
-      setUserId(uid);
+      const uid = applySession(session as any);
       if (uid) {
         fetchProfile(uid).then(p => {
           if (p) setPlan(p.plan);
@@ -36,8 +51,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const uid = session?.user.id ?? null;
-      setUserId(uid);
+      const uid = applySession(session as any);
       if (uid) {
         fetchProfile(uid).then(p => { if (p) setPlan(p.plan); });
       } else {
@@ -49,7 +63,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <UserContext.Provider value={{ userId, plan, isPremium: plan === 'premium', loading }}>
+    <UserContext.Provider value={{ userId, email, isAnonymous, plan, isPremium: plan === 'premium', loading }}>
       {children}
     </UserContext.Provider>
   );
