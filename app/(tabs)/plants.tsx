@@ -2,15 +2,19 @@ import React, { useRef, useState, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
+  Text,
+  TouchableOpacity,
   Animated,
   StyleSheet,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '@/constants/colors';
+import { FontFamily } from '@/constants/fonts';
 import { Plant } from '@/constants/data';
 import { fetchPlants } from '@/lib/db/plants';
 import { useUser } from '@/context/UserContext';
@@ -26,11 +30,16 @@ export default function PlantsScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const [addSheetVisible, setAddSheetVisible] = useState(false);
   const [plants, setPlants] = useState<Plant[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       if (!userId) return;
-      fetchPlants(userId).then(setPlants);
+      setLoading(true);
+      fetchPlants(userId).then(p => {
+        setPlants(p);
+        setLoading(false);
+      });
     }, [userId])
   );
 
@@ -50,13 +59,19 @@ export default function PlantsScreen() {
     extrapolate: 'clamp',
   });
 
+  const subtitle = loading
+    ? 'Chargement…'
+    : plants.length === 0
+      ? 'Aucune plante encore'
+      : `${plants.length} plante${plants.length > 1 ? 's' : ''} suivie${plants.length > 1 ? 's' : ''}`;
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
 
       <Animated.ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 24 }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, flexGrow: 1 }]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -66,7 +81,7 @@ export default function PlantsScreen() {
       >
         <ScreenHeader
           title="Mes plantes 🪴"
-          subtitle={`${plants.length} plantes suivies`}
+          subtitle={subtitle}
           titleOpacity={titleOpacity}
           subtitleSize={16}
           right={
@@ -76,15 +91,39 @@ export default function PlantsScreen() {
           }
         />
 
-        <View style={styles.list}>
-          {plants.map(plant => (
-            <PlantCard
-              key={plant.id}
-              plant={plant}
-              onPress={() => router.push(`/plant/${plant.id}` as any)}
-            />
-          ))}
-        </View>
+        {loading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={Colors.primaryDark} />
+          </View>
+        ) : plants.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <View style={styles.emptyIconCircle}>
+              <Ionicons name="leaf" size={48} color={Colors.primaryDark} />
+            </View>
+            <Text style={styles.emptyTitle}>Aucune plante pour l'instant</Text>
+            <Text style={styles.emptySubtitle}>
+              Ajoute ta première plante pour commencer à suivre ses soins au quotidien.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => setAddSheetVisible(true)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add-circle-outline" size={18} color={Colors.textDark} />
+              <Text style={styles.emptyBtnText}>Ajouter une plante</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.list}>
+            {plants.map(plant => (
+              <PlantCard
+                key={plant.id}
+                plant={plant}
+                onPress={() => router.push(`/plant/${plant.id}` as any)}
+              />
+            ))}
+          </View>
+        )}
 
         <View style={{ height: 120 }} />
       </Animated.ScrollView>
@@ -116,4 +155,63 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   list: { gap: 16 },
+
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+  },
+
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 48,
+    gap: 16,
+  },
+  emptyIconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontFamily: FontFamily.headerBold,
+    fontSize: 20,
+    color: Colors.textDark,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontFamily: FontFamily.bodyRegular,
+    fontSize: 15,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 280,
+  },
+  emptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 100,
+    marginTop: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  emptyBtnText: {
+    fontFamily: FontFamily.calendarBold,
+    fontSize: 15,
+    color: Colors.textDark,
+  },
 });

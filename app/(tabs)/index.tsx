@@ -11,6 +11,7 @@ import {
   StatusBar,
   Easing,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -65,6 +66,7 @@ export default function HomeScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [plants, setPlants] = useState<Plant[]>([]);
   const [taskDays, setTaskDays] = useState<Set<number>>(new Set());
+  const [loadingData, setLoadingData] = useState(true);
   const [headerHeight, setHeaderHeight] = useState(insets.top + 100);
 
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
@@ -84,6 +86,7 @@ export default function HomeScreen() {
 
   const loadData = useCallback(async (date: Date) => {
     if (!userId) return;
+    setLoadingData(true);
     const dateStr = date.toISOString().slice(0, 10);
     const [fetchedTasks, fetchedPlants, fetchedTaskDays] = await Promise.all([
       fetchTasksByDay(userId, date.getDay(), dateStr),
@@ -93,6 +96,7 @@ export default function HomeScreen() {
     setTasks(fetchedTasks);
     setPlants(fetchedPlants);
     setTaskDays(fetchedTaskDays);
+    setLoadingData(false);
   }, [userId]);
 
   useFocusEffect(
@@ -210,9 +214,33 @@ export default function HomeScreen() {
             />
           )}
 
-          {tasks.length === 0 ? (
+          {loadingData ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>Aucune tâche ce jour 🌿</Text>
+              <ActivityIndicator size="large" color={Colors.primaryDark} />
+            </View>
+          ) : tasks.length === 0 && plants.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="leaf-outline" size={36} color={Colors.primaryDark} />
+              </View>
+              <Text style={styles.emptyTitle}>Commence par ajouter une plante</Text>
+              <Text style={styles.emptyText}>
+                Prends une photo de ta plante, l'IA s'occupe du reste.
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyBtn}
+                onPress={() => router.push('/add-plant/camera' as any)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="camera-outline" size={17} color={Colors.textDark} />
+                <Text style={styles.emptyBtnText}>Ajouter une plante</Text>
+              </TouchableOpacity>
+            </View>
+          ) : tasks.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>🌿</Text>
+              <Text style={styles.emptyTitle}>Journée tranquille !</Text>
+              <Text style={styles.emptyText}>Pas de tâches prévues aujourd'hui.</Text>
             </View>
           ) : (
             <View style={styles.groups}>
@@ -367,10 +395,47 @@ const styles = StyleSheet.create({
   emptyState: {
     paddingVertical: 32,
     alignItems: 'center',
+    gap: 10,
+  },
+  emptyIcon: {
+    fontSize: 40,
+  },
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontFamily: FontFamily.headerBold,
+    fontSize: 17,
+    color: Colors.textDark,
+    textAlign: 'center',
   },
   emptyText: {
     fontFamily: FontFamily.bodyRegular,
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.textMuted,
+    textAlign: 'center',
+    maxWidth: 260,
+    lineHeight: 20,
+  },
+  emptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 100,
+    marginTop: 4,
+  },
+  emptyBtnText: {
+    fontFamily: FontFamily.calendarBold,
+    fontSize: 14,
+    color: Colors.textDark,
   },
 });
