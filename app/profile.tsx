@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,14 +14,41 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
 import { useUser } from '@/context/UserContext';
+import {
+  getNotifEnabled,
+  setNotifEnabled,
+  requestPermissions,
+  cancelAllNotifications,
+  rescheduleAllTasks,
+} from '@/lib/notifications';
+import { fetchAllUserTasks } from '@/lib/db/tasks';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { isPremium } = useUser();
+  const { isPremium, userId } = useUser();
 
-  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [notifEnabled, setNotifEnabledState] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    getNotifEnabled().then(setNotifEnabledState);
+  }, []);
+
+  const handleNotifToggle = async (value: boolean) => {
+    setNotifEnabledState(value);
+    await setNotifEnabled(value);
+    if (value) {
+      const granted = await requestPermissions();
+      if (!granted) { setNotifEnabledState(false); await setNotifEnabled(false); return; }
+      if (userId) {
+        const tasks = await fetchAllUserTasks(userId);
+        await rescheduleAllTasks(tasks);
+      }
+    } else {
+      await cancelAllNotifications();
+    }
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -66,7 +93,7 @@ export default function ProfileScreen() {
             <Text style={styles.settingLabel}>Notifications</Text>
             <Switch
               value={notifEnabled}
-              onValueChange={setNotifEnabled}
+              onValueChange={handleNotifToggle}
               trackColor={{ false: '#E0E0E0', true: Colors.primary }}
               thumbColor="#FFFFFF"
               ios_backgroundColor="#E0E0E0"

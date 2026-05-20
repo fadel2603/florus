@@ -58,6 +58,15 @@ export async function toggleTask(taskId: string, userId: string, done: boolean):
   if (error) console.warn('[Florus] toggleTask:', error.message);
 }
 
+export type InsertedTask = {
+  id: string;
+  plantName: string;
+  type: Task['type'];
+  dayOfWeek: number;
+  time: string | null;
+  recurringDays: number | null;
+};
+
 export async function insertTasks(
   userId: string,
   tasks: Array<{
@@ -69,8 +78,9 @@ export async function insertTasks(
     recurring?: boolean;
     recurringDays?: number;
     initialLastDoneDate?: string;
+    daysFromNow?: number;
   }>
-): Promise<void> {
+): Promise<InsertedTask[]> {
   const rows = tasks.map(t => ({
     user_id: userId,
     plant_id: t.plantId,
@@ -82,8 +92,33 @@ export async function insertTasks(
     recurring_days: t.recurringDays ?? null,
     last_done_date: t.initialLastDoneDate ?? null,
   }));
-  const { error } = await supabase.from('tasks').insert(rows);
-  if (error) console.warn('[Florus] insertTasks:', error.message);
+  const { data, error } = await supabase.from('tasks').insert(rows).select('id, plant_name, type, day_of_week, time, recurring_days');
+  if (error) { console.warn('[Florus] insertTasks:', error.message); return []; }
+  return (data ?? []).map((r: Record<string, unknown>, i) => ({
+    id: r.id as string,
+    plantName: r.plant_name as string,
+    type: r.type as Task['type'],
+    dayOfWeek: r.day_of_week as number,
+    time: r.time as string | null,
+    recurringDays: r.recurring_days as number | null,
+    daysFromNow: tasks[i]?.daysFromNow,
+  }));
+}
+
+export async function fetchAllUserTasks(userId: string): Promise<InsertedTask[]> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('id, plant_name, type, day_of_week, time, recurring_days')
+    .eq('user_id', userId);
+  if (error) { console.warn('[Florus] fetchAllUserTasks:', error.message); return []; }
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    id: r.id as string,
+    plantName: r.plant_name as string,
+    type: r.type as Task['type'],
+    dayOfWeek: r.day_of_week as number,
+    time: r.time as string | null,
+    recurringDays: r.recurring_days as number | null,
+  }));
 }
 
 export async function fetchTaskDays(userId: string): Promise<Set<number>> {
@@ -95,11 +130,18 @@ export async function fetchTaskDays(userId: string): Promise<Set<number>> {
   return new Set((data ?? []).map((r: Record<string, unknown>) => r.day_of_week as number));
 }
 
-export async function deletePlantTasks(userId: string, plantId: string): Promise<void> {
+export async function deletePlantTasks(userId: string, plantId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('tasks')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('plant_id', plantId);
+  const ids = (data ?? []).map((r: Record<string, unknown>) => r.id as string);
   const { error } = await supabase
     .from('tasks')
     .delete()
     .eq('user_id', userId)
     .eq('plant_id', plantId);
   if (error) console.warn('[Florus] deletePlantTasks:', error.message);
+  return ids;
 }

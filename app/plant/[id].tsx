@@ -30,6 +30,7 @@ import { Plant, Task, HistoryEvent } from '@/constants/data';
 import { fetchPlantById, updatePlantDb, deletePlant } from '@/lib/db/plants';
 import { fetchHistory, insertHistoryEvent } from '@/lib/db/history';
 import { insertTasks, deletePlantTasks } from '@/lib/db/tasks';
+import { cancelTaskNotifications } from '@/lib/notifications';
 import { useUser } from '@/context/UserContext';
 import { ANTHROPIC_API_KEY, AI_MODEL } from '@/constants/api';
 import Button from '@/components/ui/Button';
@@ -410,7 +411,8 @@ export default function PlantDetailScreen() {
       [
         { text: 'Annuler', style: 'cancel' },
         { text: 'Supprimer', style: 'destructive', onPress: async () => {
-          await Promise.all([deletePlant(userId, plant.id), deletePlantTasks(userId, plant.id)]);
+          const [, taskIds] = await Promise.all([deletePlant(userId, plant.id), deletePlantTasks(userId, plant.id)]);
+          await cancelTaskNotifications(taskIds);
           router.replace('/(tabs)/plants' as any);
         }},
       ]

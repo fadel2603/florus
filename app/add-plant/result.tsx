@@ -23,6 +23,7 @@ import { Plant, Task } from '@/constants/data';
 import { insertPlant } from '@/lib/db/plants';
 import { insertTasks } from '@/lib/db/tasks';
 import { insertHistoryEvent } from '@/lib/db/history';
+import { scheduleTaskNotification } from '@/lib/notifications';
 import { useUser } from '@/context/UserContext';
 
 const { height: SCREEN_H } = Dimensions.get('window');
@@ -64,7 +65,7 @@ async function scheduleAITasks(
   const tasksToInsert: Array<{
     plantId: string; plantName: string; type: Task['type'];
     dayOfWeek: number; recurring?: boolean; recurringDays?: number;
-    initialLastDoneDate?: string;
+    initialLastDoneDate?: string; daysFromNow?: number;
   }> = [];
 
   aiTasks.forEach(aiTask => {
@@ -106,12 +107,14 @@ async function scheduleAITasks(
         recurring: aiTask.recurring ?? false,
         recurringDays: aiTask.recurringDays ?? undefined,
         initialLastDoneDate,
+        daysFromNow: aiTask.daysFromNow,
       });
     });
   });
 
   if (tasksToInsert.length > 0) {
-    await insertTasks(userId, tasksToInsert);
+    const inserted = await insertTasks(userId, tasksToInsert);
+    await Promise.all(inserted.map(t => scheduleTaskNotification(t)));
   }
 }
 
