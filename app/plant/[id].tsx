@@ -26,16 +26,11 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
-import {
-  PLANTS,
-  HISTORY_EVENTS,
-  Plant,
-  Task,
-  updatePlant,
-  removePlant,
-  logHistoryEvent,
-  addTasksForDay,
-} from '@/constants/data';
+import { Plant, Task, HistoryEvent } from '@/constants/data';
+import { fetchPlantById, updatePlantDb, deletePlant } from '@/lib/db/plants';
+import { fetchHistory, insertHistoryEvent } from '@/lib/db/history';
+import { insertTasks, deletePlantTasks } from '@/lib/db/tasks';
+import { useUser } from '@/context/UserContext';
 import { ANTHROPIC_API_KEY, AI_MODEL } from '@/constants/api';
 import Button from '@/components/ui/Button';
 import TimelineItem from '@/components/ui/TimelineItem';
@@ -181,9 +176,10 @@ export default function PlantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { userId } = useUser();
 
-  const [plant, setPlant] = useState<Plant>(() => PLANTS.find(p => p.id === id) ?? PLANTS[0]);
-  const [history, setHistory] = useState(() => HISTORY_EVENTS[plant.id] ?? []);
+  const [plant, setPlant] = useState<Plant | null>(null);
+  const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null);
   const [aiVisible, setAiVisible] = useState(false);
@@ -255,10 +251,15 @@ export default function PlantDetailScreen() {
   // ── useFocusEffect ──
   useFocusEffect(
     useCallback(() => {
-      const fresh = PLANTS.find(p => p.id === id);
-      if (fresh) setPlant({ ...fresh });
-      setHistory([...(HISTORY_EVENTS[id ?? ''] ?? [])]);
-    }, [id])
+      if (!userId || !id) return;
+      Promise.all([
+        fetchPlantById(userId, id),
+        fetchHistory(userId, id),
+      ]).then(([p, h]) => {
+        if (p) setPlant(p);
+        setHistory(h);
+      });
+    }, [userId, id])
   );
 
   // ── Camera pulse ──
@@ -276,7 +277,7 @@ export default function PlantDetailScreen() {
 
   // ── Edit sheet init ──
   useEffect(() => {
-    if (!editVisible) return;
+    if (!editVisible || !plant) return;
     setEditName(plant.name);
     setEditLocation(plant.location === 'outdoor' ? 'Extérieur' : 'Intérieur');
     editTranslateY.setValue(EDIT_SHEET_H);
@@ -288,7 +289,7 @@ export default function PlantDetailScreen() {
 
   // ── Scan analyzing: animation + API in parallel ──
   useEffect(() => {
-    if (!scanAnalyzing || !scanPhotoUri) return;
+    if (!scanAnalyzing || !scanPhotoUri || !plant) return;
     let mounted = true;
 
     scanTextOpacity.setValue(1);
@@ -358,21 +359,21 @@ export default function PlantDetailScreen() {
 
   // ── Auto-log scan to history when diagnosis arrives ──
   useEffect(() => {
-    if (!scanDiagnosis) return;
+    if (!scanDiagnosis || !userId || !plant) return;
     const cfg = DIAG_CONFIG[scanDiagnosis.diagnosis] ?? DIAG_CONFIG.warning;
     const n = scanDiagnosis.issues.length;
     const label = n > 0
       ? `Analyse IA · ${cfg.label} · ${n} problème${n > 1 ? 's' : ''} détecté${n > 1 ? 's' : ''}`
       : `Analyse IA · ${cfg.label}`;
-    logHistoryEvent(plant.id, {
-      id: `scan_auto_${plant.id}_${Date.now()}`,
+    insertHistoryEvent(userId, plant.id, {
       type: 'analysis',
       label,
       date: new Date().toISOString(),
       icon: 'scan-outline',
       color: cfg.color,
+    }).then(() => {
+      fetchHistory(userId, plant.id).then(setHistory);
     });
-    setHistory([...(HISTORY_EVENTS[plant.id] ?? [])]);
   }, [scanDiagnosis]);
 
   // ── Scroll to end when keyboard shows inside result sheet ──
@@ -393,22 +394,25 @@ export default function PlantDetailScreen() {
     ]).start(() => setEditVisible(false));
   };
 
-  const handleSave = () => {
-    updatePlant(plant.id, {
-      name: editName,
-      location: editLocation === 'Extérieur' ? 'outdoor' : 'indoor',
-    });
-    setPlant(prev => ({ ...prev, name: editName, location: editLocation === 'Extérieur' ? 'outdoor' : 'indoor' }));
+  const handleSave = async () => {
+    if (!userId || !plant) return;
+    const updates = { name: editName, location: editLocation === 'Extérieur' ? 'outdoor' as const : 'indoor' as const };
+    await updatePlantDb(userId, plant.id, updates);
+    setPlant(prev => prev ? { ...prev, ...updates } : prev);
     dismissEdit();
   };
 
   const handleDelete = () => {
+    if (!userId || !plant) return;
     Alert.alert(
       'Supprimer la plante',
       `Supprimer "${plant.name}" et toutes ses tâches ?`,
       [
         { text: 'Annuler', style: 'cancel' },
-        { text: 'Supprimer', style: 'destructive', onPress: () => { removePlant(plant.id); router.replace('/(tabs)/plants' as any); } },
+        { text: 'Supprimer', style: 'destructive', onPress: async () => {
+          await Promise.all([deletePlant(userId, plant.id), deletePlantTasks(userId, plant.id)]);
+          router.replace('/(tabs)/plants' as any);
+        }},
       ]
     );
   };
@@ -471,16 +475,15 @@ export default function PlantDetailScreen() {
     });
   };
 
-  const handleApplyRecommendations = () => {
-    if (!scanDiagnosis || applyDone) return;
+  const handleApplyRecommendations = async () => {
+    if (!scanDiagnosis || applyDone || !userId || !plant) return;
     if (scanDiagnosis.urgentTask) {
       const targetDow = (new Date().getDay() + (scanDiagnosis.urgentTask.daysFromNow ?? 0)) % 7;
-      addTasksForDay(targetDow, [{
-        id: `scan_${plant.id}_${Date.now()}`,
+      await insertTasks(userId, [{
         plantId: plant.id,
         plantName: plant.name,
         type: (scanDiagnosis.urgentTask.type as Task['type']) ?? 'observe',
-        done: false,
+        dayOfWeek: targetDow,
       }]);
     }
     setApplyDone(true);
@@ -489,7 +492,7 @@ export default function PlantDetailScreen() {
   };
 
   const handleSendQuestion = async () => {
-    if (!questionText.trim() || !scanPhotoUri || questionLoading) return;
+    if (!questionText.trim() || !scanPhotoUri || questionLoading || !plant) return;
     setQuestionLoading(true);
     setQuestionAnswer(null);
     try {
@@ -519,6 +522,10 @@ export default function PlantDetailScreen() {
   });
 
   // ─── Render ───────────────────────────────────────────────────────────────────
+
+  if (!plant) {
+    return <View style={styles.root}><StatusBar barStyle="light-content" translucent backgroundColor="transparent" /></View>;
+  }
 
   return (
     <View style={styles.root}>

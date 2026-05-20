@@ -11,7 +11,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '@/constants/colors';
-import { PLANTS, Plant } from '@/constants/data';
+import { Plant } from '@/constants/data';
+import { fetchPlants } from '@/lib/db/plants';
+import { useUser } from '@/context/UserContext';
 import AddPlantSheet from '@/components/AddPlantSheet';
 import ScreenHeader from '@/components/ui/ScreenHeader';
 import PlantCard from '@/components/ui/PlantCard';
@@ -20,15 +22,16 @@ import GlassButton from '@/components/ui/GlassButton';
 export default function PlantsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { userId } = useUser();
   const scrollY = useRef(new Animated.Value(0)).current;
   const [addSheetVisible, setAddSheetVisible] = useState(false);
-  const [plants, setPlants] = useState<Plant[]>(PLANTS);
+  const [plants, setPlants] = useState<Plant[]>([]);
 
-  // Re-read mutable PLANTS array each time this tab gains focus
   useFocusEffect(
     useCallback(() => {
-      setPlants([...PLANTS]);
-    }, [])
+      if (!userId) return;
+      fetchPlants(userId).then(setPlants);
+    }, [userId])
   );
 
   const handleGallery = async () => {

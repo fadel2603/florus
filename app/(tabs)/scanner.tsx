@@ -1,9 +1,6 @@
 import React from 'react';
-import { View } from 'react-native';
-import { Colors } from '@/constants/colors';
+import AISheet from '@/components/AISheet';
 
 export default function ScannerScreen() {
-  return (
-    <View style={{ flex: 1, backgroundColor: Colors.background }} />
-  );
+  return <AISheet mode="screen" visible onClose={() => {}} />;
 }

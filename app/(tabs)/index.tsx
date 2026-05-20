@@ -18,7 +18,11 @@ import { FontFamily } from '@/constants/fonts';
 import CalendarStrip from '@/components/CalendarStrip';
 import PlantPreviewSheet from '@/components/PlantPreviewSheet';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { TASKS_BY_DAY, Task, PLANTS, TASK_TYPE_META, logHistoryEvent } from '@/constants/data';
+import { Task, Plant, TASK_TYPE_META } from '@/constants/data';
+import { fetchTasksByDay, toggleTask, fetchTaskDays } from '@/lib/db/tasks';
+import { fetchPlants } from '@/lib/db/plants';
+import { insertHistoryEvent } from '@/lib/db/history';
+import { useUser } from '@/context/UserContext';
 import Badge from '@/components/ui/Badge';
 import ProgressBar from '@/components/ui/ProgressBar';
 import ScreenHeader from '@/components/ui/ScreenHeader';
@@ -27,6 +31,8 @@ import TaskGroup from '@/components/ui/TaskGroup';
 const SCREEN_W = Dimensions.get('window').width;
 const SLIDE_DIST = SCREEN_W * 0.35;
 const ANIM_DURATION = 250;
+
+
 
 type GroupConfig = {
   type: Task['type'];
@@ -37,65 +43,78 @@ type GroupConfig = {
 };
 
 const GROUPS: GroupConfig[] = [
-  { type: 'water',   label: 'Arroser',  iconName: 'water', iconColor: '#2196F3', iconBg: Colors.waterIconBg },
-  { type: 'observe', label: 'Observer', iconName: 'eye',   iconColor: '#2E7D32', iconBg: '#C8E6C9' },
+  { type: 'water',        label: 'Arroser',    iconName: 'water',          iconColor: '#2196F3', iconBg: Colors.waterIconBg },
+  { type: 'observe',      label: 'Observer',   iconName: 'eye',            iconColor: '#2E7D32', iconBg: '#C8E6C9' },
+  { type: 'fertilize',    label: 'Fertiliser', iconName: 'flask',          iconColor: '#FF9500', iconBg: '#FFF3E0' },
+  { type: 'repot',        label: 'Rempoter',   iconName: 'leaf',           iconColor: '#795548', iconBg: '#EFEBE9' },
+  { type: 'treat',        label: 'Traiter',    iconName: 'medkit',         iconColor: '#C62828', iconBg: '#FFEBEE' },
+  { type: 'rotate',       label: 'Tourner',    iconName: 'refresh-circle', iconColor: '#F9A825', iconBg: '#FFF8E1' },
+  { type: 'clean_leaves', label: 'Nettoyer',   iconName: 'sparkles',       iconColor: '#66BB6A', iconBg: '#E8F5E9' },
+  { type: 'mist',         label: 'Brumiser',   iconName: 'water-outline',  iconColor: '#4FC3F7', iconBg: '#E1F5FE' },
+  { type: 'trim',         label: 'Tailler',    iconName: 'cut',            iconColor: '#9C27B0', iconBg: '#F3E5F5' },
 ];
-
-function getTasksForDate(date: Date): Task[] {
-  const day = date.getDay();
-  return (TASKS_BY_DAY[day] ?? []).map(t => ({ ...t }));
-}
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { userId } = useUser();
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState(today);
-  const [tasks, setTasks] = useState<Task[]>(getTasksForDate(today));
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [plants, setPlants] = useState<Plant[]>([]);
+  const [taskDays, setTaskDays] = useState<Set<number>>(new Set());
   const [headerHeight, setHeaderHeight] = useState(insets.top + 100);
 
   const [previewTask, setPreviewTask] = useState<Task | null>(null);
-  const previewPlant = previewTask ? PLANTS.find(p => p.id === previewTask.plantId) ?? null : null;
+  const previewPlant = previewTask ? plants.find(p => p.id === previewTask.plantId) ?? null : null;
+
+  const loadData = useCallback(async (date: Date) => {
+    if (!userId) return;
+    const dateStr = date.toISOString().slice(0, 10);
+    const [fetchedTasks, fetchedPlants, fetchedTaskDays] = await Promise.all([
+      fetchTasksByDay(userId, date.getDay(), dateStr),
+      fetchPlants(userId),
+      fetchTaskDays(userId),
+    ]);
+    setTasks(fetchedTasks);
+    setPlants(fetchedPlants);
+    setTaskDays(fetchedTaskDays);
+  }, [userId]);
 
   useFocusEffect(
     useCallback(() => {
-      setTasks(getTasksForDate(selectedDate));
-    }, [selectedDate])
+      loadData(selectedDate);
+    }, [loadData, selectedDate])
   );
 
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const translateX   = useRef(new Animated.Value(0)).current;
-  const opacity      = useRef(new Animated.Value(1)).current;
-  const todayBtnOpacity = useRef(new Animated.Value(0)).current;
+  const scrollY  = useRef(new Animated.Value(0)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const opacity    = useRef(new Animated.Value(1)).current;
 
-  const toggle = (id: string) =>
-    setTasks(prev => prev.map(t => {
-      if (t.id !== id) return t;
-      const nowDone = !t.done;
-      if (nowDone) {
-        const meta = TASK_TYPE_META[t.type] ?? { label: t.type, icon: 'checkmark-circle', color: Colors.primary };
-        logHistoryEvent(t.plantId, {
-          id: `done_${id}_${Date.now()}`,
-          type: 'task_done',
-          label: meta.label,
-          date: new Date().toISOString(),
-          icon: meta.icon,
-          color: meta.color,
-        });
-      }
-      return { ...t, done: nowDone };
-    }));
+  const toggle = async (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (!task || !userId) return;
+    const nowDone = !task.done;
+
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, done: nowDone } : t));
+
+    await toggleTask(id, userId, nowDone);
+
+    if (nowDone) {
+      const meta = TASK_TYPE_META[task.type] ?? { label: task.type, icon: 'checkmark-circle', color: Colors.primary };
+      await insertHistoryEvent(userId, task.plantId, {
+        type: 'task_done',
+        label: meta.label,
+        date: new Date().toISOString(),
+        icon: meta.icon,
+        color: meta.color,
+      });
+    }
+  };
 
   const doneCnt = tasks.filter(t => t.done).length;
 
   const handleDateChange = (newDate: Date, skipAnim?: boolean) => {
-    const isToday = isSameDay(newDate, today);
-    Animated.timing(todayBtnOpacity, {
-      toValue: isToday ? 0 : 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-
     const direction = newDate > selectedDate ? 1 : -1;
 
     Animated.parallel([
@@ -113,7 +132,7 @@ export default function HomeScreen() {
       }),
     ]).start(() => {
       setSelectedDate(newDate);
-      setTasks(getTasksForDate(newDate));
+      if (userId) fetchTasksByDay(userId, newDate.getDay(), newDate.toISOString().slice(0, 10)).then(setTasks);
       translateX.setValue(direction * SLIDE_DIST);
 
       Animated.parallel([
@@ -158,12 +177,7 @@ export default function HomeScreen() {
       >
         {/* ── CALENDRIER ── */}
         <View style={styles.calendarCard}>
-          <Animated.View style={[styles.todayBtn, { opacity: todayBtnOpacity }]} pointerEvents={isSameDay(selectedDate, today) ? 'none' : 'auto'}>
-            <TouchableOpacity onPress={() => handleDateChange(new Date())} activeOpacity={0.7}>
-              <Text style={styles.todayBtnText}>Aujourd'hui</Text>
-            </TouchableOpacity>
-          </Animated.View>
-          <CalendarStrip onDateChange={handleDateChange} value={selectedDate} />
+          <CalendarStrip onDateChange={handleDateChange} value={selectedDate} taskDays={taskDays} />
         </View>
 
         {/* ── BLOC TÂCHES ANIMÉ ── */}
@@ -199,6 +213,7 @@ export default function HomeScreen() {
                     iconColor={group.iconColor}
                     iconBg={group.iconBg}
                     tasks={groupTasks}
+                    plants={plants}
                     onToggle={toggle}
                     onPhotoPress={setPreviewTask}
                   />
@@ -317,22 +332,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  todayBtn: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    zIndex: 1,
-    backgroundColor: '#E8F5E0',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  todayBtnText: {
-    fontFamily: FontFamily.calendarMedium,
-    fontSize: 12,
-    color: Colors.textDark,
-  },
-
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',

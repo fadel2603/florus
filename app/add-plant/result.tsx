@@ -19,7 +19,11 @@ import AddPlantFormSheet from '@/components/AddPlantFormSheet';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { AIPlantAnalysis } from '@/constants/api';
-import { Plant, Task, addPlant, addTasksForDay, logHistoryEvent } from '@/constants/data';
+import { Plant, Task } from '@/constants/data';
+import { insertPlant } from '@/lib/db/plants';
+import { insertTasks } from '@/lib/db/tasks';
+import { insertHistoryEvent } from '@/lib/db/history';
+import { useUser } from '@/context/UserContext';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -48,39 +52,74 @@ const TASK_TYPE_CONFIG: Record<string, TaskTypeConfig> = {
   treat:        { color: '#C62828', emoji: '🚨', label: 'Traiter' },
 };
 
-function scheduleAITasks(
-  tasks: AIPlantAnalysis['tasks'],
+async function scheduleAITasks(
+  aiTasks: AIPlantAnalysis['tasks'],
   plantId: string,
   plantName: string,
-): void {
-  const todayDow = new Date().getDay();
-  tasks.forEach((aiTask, i) => {
-    const targetDow = (todayDow + aiTask.daysFromNow) % 7;
+  userId: string,
+): Promise<void> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tasksToInsert: Array<{
+    plantId: string; plantName: string; type: Task['type'];
+    dayOfWeek: number; recurring?: boolean; recurringDays?: number;
+    initialLastDoneDate?: string;
+  }> = [];
+
+  aiTasks.forEach(aiTask => {
+    // Use real date arithmetic so daysFromNow:14 ≠ daysFromNow:0
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + aiTask.daysFromNow);
+    const targetDow = targetDate.getDay();
+
     const days = new Set<number>([targetDow]);
 
+    // For tasks recurring within a week (e.g. mist every 3 days), add all occurrences
     if (aiTask.recurring && aiTask.recurringDays && aiTask.recurringDays > 0 && aiTask.recurringDays < 7) {
-      for (let d = targetDow + aiTask.recurringDays; d < targetDow + 7; d += aiTask.recurringDays) {
-        days.add(d % 7);
+      for (let extra = aiTask.daysFromNow + aiTask.recurringDays; extra < aiTask.daysFromNow + 7; extra += aiTask.recurringDays) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + extra);
+        days.add(d.getDay());
+      }
+    }
+
+    // Set initialLastDoneDate so the task first appears exactly daysFromNow days from now.
+    // Logic: filter shows task when daysBetween(lastDoneDate, viewedDate) >= recurringDays.
+    // So if lastDoneDate = today - (recurringDays - daysFromNow), the task surfaces on the right day.
+    let initialLastDoneDate: string | undefined;
+    if (aiTask.recurring && aiTask.recurringDays && aiTask.daysFromNow > 0) {
+      const daysBack = aiTask.recurringDays - aiTask.daysFromNow;
+      if (daysBack > 0) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - daysBack);
+        initialLastDoneDate = d.toISOString().slice(0, 10);
       }
     }
 
     days.forEach(dow => {
-      const task: Task = {
-        id: `ai_${plantId}_${i}_${dow}`,
+      tasksToInsert.push({
         plantId,
         plantName,
         type: aiTask.type,
-        done: false,
-      };
-      addTasksForDay(dow, [task]);
+        dayOfWeek: dow,
+        recurring: aiTask.recurring ?? false,
+        recurringDays: aiTask.recurringDays ?? undefined,
+        initialLastDoneDate,
+      });
     });
   });
+
+  if (tasksToInsert.length > 0) {
+    await insertTasks(userId, tasksToInsert);
+  }
 }
 
 export default function ResultScreen() {
   const { photo, analysis: analysisParam } = useLocalSearchParams<{ photo: string; analysis: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { userId } = useUser();
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardTranslateY = useRef(new Animated.Value(30)).current;
   const [showForm, setShowForm] = useState(false);
@@ -97,47 +136,45 @@ export default function ResultScreen() {
     ]).start();
   }, []);
 
-  const handleConfirm = (customName: string, customLocation: 'Intérieur' | 'Extérieur') => {
-    if (analysis) {
-      const plantId = `ai_${Date.now()}`;
-      const newPlant: Plant = {
-        id: plantId,
-        name: customName,
-        species: analysis.species,
-        image: photo ?? '',
-        waterFrequency: `Tous les ${analysis.wateringFrequency} jours`,
-        lastWatered: 'Jamais',
-        health: analysis.health === 'healthy' ? 'good' : analysis.health,
-        lightNeeds: analysis.lightNeeds,
-        location: analysis.location,
-        healthNote: analysis.healthNote,
-        issues: analysis.issues,
-      };
-      addPlant(newPlant);
-      scheduleAITasks(analysis.tasks, plantId, customName);
+  const handleConfirm = async (customName: string, customLocation: 'Intérieur' | 'Extérieur') => {
+    if (!analysis || !userId) return;
 
-      // Log "added" event
-      logHistoryEvent(plantId, {
-        id: `added_${plantId}`,
-        type: 'added',
-        label: 'Plante ajoutée',
-        date: new Date().toISOString(),
-        icon: 'leaf-outline',
-        color: Colors.primary,
-      });
+    const newPlant: Omit<Plant, 'id'> = {
+      name: customName,
+      species: analysis.species,
+      image: photo ?? '',
+      waterFrequency: `Tous les ${analysis.wateringFrequency} jours`,
+      lastWatered: 'Jamais',
+      health: analysis.health === 'healthy' ? 'good' : analysis.health,
+      lightNeeds: analysis.lightNeeds,
+      location: analysis.location,
+      healthNote: analysis.healthNote,
+      issues: analysis.issues,
+    };
 
-      // Log AI analysis event
-      const healthLabel: Record<string, string> = { healthy: 'Bonne santé', warning: 'Attention requise', critical: 'Soins urgents' };
-      const issueNote = analysis.issues.length > 0 ? ` · ${analysis.issues[0]}` : '';
-      logHistoryEvent(plantId, {
-        id: `analysis_${plantId}`,
-        type: 'analysis',
-        label: `Analyse IA : ${healthLabel[analysis.health] ?? analysis.health}${issueNote}`,
-        date: new Date().toISOString(),
-        icon: 'sparkles-outline',
-        color: '#9C27B0',
-      });
-    }
+    const plantId = await insertPlant(userId, newPlant);
+    if (!plantId) return;
+
+    await scheduleAITasks(analysis.tasks, plantId, customName, userId);
+
+    await insertHistoryEvent(userId, plantId, {
+      type: 'added',
+      label: 'Plante ajoutée',
+      date: new Date().toISOString(),
+      icon: 'leaf-outline',
+      color: Colors.primary,
+    });
+
+    const healthLabel: Record<string, string> = { healthy: 'Bonne santé', warning: 'Attention requise', critical: 'Soins urgents' };
+    const issueNote = analysis.issues.length > 0 ? ` · ${analysis.issues[0]}` : '';
+    await insertHistoryEvent(userId, plantId, {
+      type: 'analysis',
+      label: `Analyse IA : ${healthLabel[analysis.health] ?? analysis.health}${issueNote}`,
+      date: new Date().toISOString(),
+      icon: 'sparkles-outline',
+      color: '#9C27B0',
+    });
+
     setShowForm(false);
     router.replace('/(tabs)/plants' as any);
   };

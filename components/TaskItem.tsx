@@ -3,16 +3,16 @@ import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
-import { Task, PLANTS } from '@/constants/data';
+import { Task } from '@/constants/data';
 
 type Props = {
   task: Task;
+  plantImage?: string;
   onToggle: (id: string) => void;
   onPhotoPress?: (task: Task) => void;
 };
 
-export default function TaskItem({ task, onToggle, onPhotoPress }: Props) {
-  const plant = PLANTS.find(p => p.id === task.plantId);
+export default function TaskItem({ task, plantImage, onToggle, onPhotoPress }: Props) {
 
   return (
     <View style={[styles.row, task.done && styles.rowDone]}>
@@ -23,8 +23,8 @@ export default function TaskItem({ task, onToggle, onPhotoPress }: Props) {
         activeOpacity={0.8}
         hitSlop={{ top: 4, bottom: 4, left: 4, right: 0 }}
       >
-        {plant?.image ? (
-          <Image source={{ uri: plant.image }} style={styles.photo} />
+        {plantImage ? (
+          <Image source={{ uri: plantImage }} style={styles.photo} />
         ) : (
           <View style={[styles.photo, styles.photoFallback]}>
             <Ionicons name="leaf" size={22} color={Colors.textMuted} />

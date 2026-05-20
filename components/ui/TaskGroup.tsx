@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
-import type { Task } from '@/constants/data';
+import type { Task, Plant } from '@/constants/data';
 import TaskItem from '@/components/TaskItem';
 import IconCircle from '@/components/ui/IconCircle';
 import Badge from '@/components/ui/Badge';
@@ -14,6 +14,7 @@ interface TaskGroupProps {
   iconColor: string;
   iconBg: string;
   tasks: Task[];
+  plants?: Plant[];
   onToggle: (id: string) => void;
   onPhotoPress?: (task: Task) => void;
 }
@@ -24,6 +25,7 @@ export default function TaskGroup({
   iconColor,
   iconBg,
   tasks,
+  plants,
   onToggle,
   onPhotoPress,
 }: TaskGroupProps) {
@@ -45,6 +47,7 @@ export default function TaskGroup({
           <TaskItem
             key={t.id}
             task={t}
+            plantImage={plants?.find(p => p.id === t.plantId)?.image}
             onToggle={onToggle}
             onPhotoPress={onPhotoPress}
           />
