@@ -11,6 +11,8 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { FontFamily } from '@/constants/fonts';
 import { BlurView } from 'expo-blur';
@@ -64,8 +66,15 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [scanCamVisible, setScanCamVisible] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const textInputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardVisible(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   // ── Voice recognition events (no-op if native module unavailable) ──
   useEffect(() => {
@@ -275,6 +284,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
         pointerEvents="none"
       />
 
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View style={styles.contentArea}>
         {plantContext && (
           <View style={styles.plantBannerWrap}>
@@ -310,6 +320,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
           </ScrollView>
         )}
       </View>
+      </TouchableWithoutFeedback>
 
       <ChatInput
         input={input}
@@ -321,7 +332,11 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
         onMic={handleMic}
         isRecording={isRecording}
         inputRef={textInputRef}
-        paddingBottom={mode === 'screen' ? (insets.bottom + 49 + 8) : (insets.bottom + 16)}
+        paddingBottom={
+          mode === 'screen'
+            ? (keyboardVisible ? insets.bottom + 8 : insets.bottom + 49 + 8)
+            : insets.bottom + 16
+        }
         placeholder={plantContext ? `Une question sur ${plantContext.name} ?` : 'Une question ?'}
         prominent={mode === 'screen'}
       />
