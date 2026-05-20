@@ -53,11 +53,9 @@ type Props = {
   /** "modal" (default): slide-up overlay with handle and close button.
    *  "screen": renders as a plain screen — no animation, no modal, tab bar stays visible. */
   mode?: 'modal' | 'screen';
-  /** Extra bottom padding for screen mode — pass useBottomTabBarHeight() from the tab screen */
-  tabBarHeight?: number;
 };
 
-export default function AISheet({ visible, onClose, plantContext, onOpenCamera, onOpenScanCamera, mode = 'modal', tabBarHeight = 0 }: Props) {
+export default function AISheet({ visible, onClose, plantContext, onOpenCamera, onOpenScanCamera, mode = 'modal' }: Props) {
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(SCREEN_H)).current;
   const [input, setInput] = useState('');
@@ -323,7 +321,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
         onMic={handleMic}
         isRecording={isRecording}
         inputRef={textInputRef}
-        paddingBottom={mode === 'screen' ? (tabBarHeight + 8) : (insets.bottom + 16)}
+        paddingBottom={mode === 'screen' ? (insets.bottom + 49 + 8) : (insets.bottom + 16)}
         placeholder={plantContext ? `Une question sur ${plantContext.name} ?` : 'Une question ?'}
         prominent={mode === 'screen'}
       />
