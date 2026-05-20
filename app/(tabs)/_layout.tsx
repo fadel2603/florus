@@ -24,7 +24,6 @@ export default function TabLayout() {
       />
       <NativeTabs.Trigger
         name="scanner"
-        role="search"
         options={{
           title: 'IA',
           icon: { sf: 'sparkles' },
