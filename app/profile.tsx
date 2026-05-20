@@ -13,10 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
+import { useUser } from '@/context/UserContext';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isPremium } = useUser();
 
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
@@ -47,8 +49,8 @@ export default function ProfileScreen() {
             <Text style={styles.userName}>Fadel Gueye</Text>
             <Text style={styles.userEmail}>fadel2603@gmail.com</Text>
           </View>
-          <View style={styles.proBadge}>
-            <Text style={styles.proBadgeText}>Florus Pro 🌿</Text>
+          <View style={[styles.proBadge, !isPremium && styles.proBadgeFree]}>
+            <Text style={styles.proBadgeText}>{isPremium ? 'Florus Pro 🌿' : 'Gratuit'}</Text>
           </View>
         </View>
 
@@ -226,6 +228,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 20,
+  },
+  proBadgeFree: {
+    backgroundColor: Colors.sectionBg,
   },
   proBadgeText: {
     fontFamily: FontFamily.calendarBold,

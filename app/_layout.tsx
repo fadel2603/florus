@@ -3,6 +3,9 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet, View } from 'react-native';
 import { useFonts } from 'expo-font';
+import { useEffect } from 'react';
+import { UserProvider } from '@/context/UserContext';
+import { ensureAnonSession } from '@/lib/auth';
 import {
   GasoekOne_400Regular,
 } from '@expo-google-fonts/gasoek-one';
@@ -32,12 +35,15 @@ export default function RootLayout() {
     Urbanist_700Bold,
   });
 
+  useEffect(() => { ensureAnonSession(); }, []);
+
   if (!fontsLoaded) {
     return <View style={styles.root} />;
   }
 
   return (
     <GestureHandlerRootView style={styles.root}>
+      <UserProvider>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
@@ -49,6 +55,7 @@ export default function RootLayout() {
         <Stack.Screen name="add-plant/result" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="profile" options={{ presentation: 'card' }} />
       </Stack>
+      </UserProvider>
     </GestureHandlerRootView>
   );
 }
