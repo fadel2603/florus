@@ -49,9 +49,12 @@ type Props = {
   plantContext?: PlantContext;
   onOpenCamera?: (onPhoto: (uri: string) => void) => void;
   onOpenScanCamera?: () => void;
+  /** "modal" (default): slide-up overlay with handle and close button.
+   *  "screen": renders as a plain screen — no animation, no modal, tab bar stays visible. */
+  mode?: 'modal' | 'screen';
 };
 
-export default function AISheet({ visible, onClose, plantContext, onOpenCamera, onOpenScanCamera }: Props) {
+export default function AISheet({ visible, onClose, plantContext, onOpenCamera, onOpenScanCamera, mode = 'modal' }: Props) {
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(SCREEN_H)).current;
   const [input, setInput] = useState('');
@@ -78,6 +81,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
   }, []);
 
   useEffect(() => {
+    if (mode === 'screen') return;
     if (visible) {
       translateY.setValue(SCREEN_H);
       Animated.spring(translateY, {
@@ -88,7 +92,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
         mass: 1,
       }).start();
     }
-  }, [visible]);
+  }, [visible, mode]);
 
   const stopRecording = () => {
     if (isRecording) {
@@ -256,82 +260,69 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
   };
 
   const hasMessages = messages.length > 0 || loading;
-  if (!visible) return null;
 
-  return (
-    <Modal visible transparent animationType="none" onRequestClose={() => dismiss()} statusBarTranslucent>
-      <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateY }] }]}>
+  const sharedContent = (
+    <>
+      <BlurView intensity={88} tint="systemUltraThinMaterialLight" style={StyleSheet.absoluteFill} />
 
-        <BlurView intensity={88} tint="systemUltraThinMaterialLight" style={StyleSheet.absoluteFill} />
+      <LinearGradient
+        colors={['transparent', 'rgba(90,180,20,0.22)', 'rgba(90,180,20,0.60)']}
+        locations={[0, 0.42, 1]}
+        start={{ x: 0.35, y: 0 }}
+        end={{ x: 0.35, y: 1 }}
+        style={styles.greenGlow}
+        pointerEvents="none"
+      />
 
-        <LinearGradient
-          colors={['transparent', 'rgba(90,180,20,0.22)', 'rgba(90,180,20,0.60)']}
-          locations={[0, 0.42, 1]}
-          start={{ x: 0.35, y: 0 }}
-          end={{ x: 0.35, y: 1 }}
-          style={styles.greenGlow}
-          pointerEvents="none"
-        />
-
-        <View {...panResponder.panHandlers} style={[styles.dragZone, { paddingTop: insets.top + 6 }]}>
-          <View style={styles.handle} />
-        </View>
-
-        <TouchableOpacity style={[styles.closeBtn, { top: insets.top + 8 }]} onPress={() => dismiss()} activeOpacity={0.7}>
-          <Ionicons name="close" size={16} color="rgba(60,60,67,0.7)" />
-        </TouchableOpacity>
-
-        <View style={styles.contentArea}>
-          {plantContext && (
-            <View style={styles.plantBannerWrap}>
-              <View style={styles.plantBanner}>
-                <Image source={{ uri: plantContext.image }} style={styles.plantThumb} />
-                <View style={styles.plantBannerText}>
-                  <Text style={styles.plantBannerName}>{plantContext.name}</Text>
-                  <Text style={styles.plantBannerSpecies}>{plantContext.species}</Text>
-                  {(plantContext.waterFrequency || plantContext.location) && (
-                    <Text style={styles.plantBannerMeta}>
-                      {plantContext.location === 'outdoor' ? '🌿 Extérieur' : '🏠 Intérieur'}
-                      {plantContext.waterFrequency ? `  ·  💧 ${plantContext.waterFrequency}` : ''}
-                    </Text>
-                  )}
-                </View>
+      <View style={styles.contentArea}>
+        {plantContext && (
+          <View style={styles.plantBannerWrap}>
+            <View style={styles.plantBanner}>
+              <Image source={{ uri: plantContext.image }} style={styles.plantThumb} />
+              <View style={styles.plantBannerText}>
+                <Text style={styles.plantBannerName}>{plantContext.name}</Text>
+                <Text style={styles.plantBannerSpecies}>{plantContext.species}</Text>
+                {(plantContext.waterFrequency || plantContext.location) && (
+                  <Text style={styles.plantBannerMeta}>
+                    {plantContext.location === 'outdoor' ? '🌿 Extérieur' : '🏠 Intérieur'}
+                    {plantContext.waterFrequency ? `  ·  💧 ${plantContext.waterFrequency}` : ''}
+                  </Text>
+                )}
               </View>
             </View>
-          )}
+          </View>
+        )}
 
-          {!hasMessages && !plantContext && <AIHero />}
+        {!hasMessages && !plantContext && <AIHero />}
 
-          {hasMessages && (
-            <ScrollView
-              ref={scrollRef}
-              style={styles.chatScroll}
-              contentContainerStyle={styles.chatContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-            >
-              {messages.map(msg => <ChatBubble key={msg.id} message={msg} />)}
-              {loading && <TypingDots />}
-            </ScrollView>
-          )}
-        </View>
+        {hasMessages && (
+          <ScrollView
+            ref={scrollRef}
+            style={styles.chatScroll}
+            contentContainerStyle={styles.chatContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          >
+            {messages.map(msg => <ChatBubble key={msg.id} message={msg} />)}
+            {loading && <TypingDots />}
+          </ScrollView>
+        )}
+      </View>
 
-        <ChatInput
-          input={input}
-          onChangeText={setInput}
-          pendingImage={pendingImage}
-          onRemovePendingImage={() => setPendingImage(null)}
-          onSend={handleSend}
-          onCamera={handleCamera}
-          onMic={handleMic}
-          isRecording={isRecording}
-          inputRef={textInputRef}
-          paddingBottom={insets.bottom + 16}
-          placeholder={plantContext ? `Une question sur ${plantContext.name} ?` : 'Une question ?'}
-        />
-
-      </Animated.View>
+      <ChatInput
+        input={input}
+        onChangeText={setInput}
+        pendingImage={pendingImage}
+        onRemovePendingImage={() => setPendingImage(null)}
+        onSend={handleSend}
+        onCamera={handleCamera}
+        onMic={handleMic}
+        isRecording={isRecording}
+        inputRef={textInputRef}
+        paddingBottom={insets.bottom + 16}
+        placeholder={plantContext ? `Une question sur ${plantContext.name} ?` : 'Une question ?'}
+      />
 
       <AIScanCamera
         visible={scanCamVisible}
@@ -342,11 +333,45 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
           setTimeout(() => textInputRef.current?.focus(), 200);
         }}
       />
+    </>
+  );
+
+  // ── Screen mode: plain screen, tab bar stays visible, no animation ──
+  if (mode === 'screen') {
+    return (
+      <View style={styles.screenRoot}>
+        {sharedContent}
+      </View>
+    );
+  }
+
+  // ── Modal mode: slide-up overlay with handle and close button ──
+  if (!visible) return null;
+
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={() => dismiss()} statusBarTranslucent>
+      <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateY }] }]}>
+
+        <View {...panResponder.panHandlers} style={[styles.dragZone, { paddingTop: insets.top + 6 }]}>
+          <View style={styles.handle} />
+        </View>
+
+        <TouchableOpacity style={[styles.closeBtn, { top: insets.top + 8 }]} onPress={() => dismiss()} activeOpacity={0.7}>
+          <Ionicons name="close" size={16} color="rgba(60,60,67,0.7)" />
+        </TouchableOpacity>
+
+        {sharedContent}
+
+      </Animated.View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  screenRoot: {
+    flex: 1,
+    overflow: 'hidden',
+  },
   greenGlow: {
     position: 'absolute',
     bottom: 0,
