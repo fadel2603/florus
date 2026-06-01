@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
+  Image,
   Animated,
   TouchableOpacity,
   StyleSheet,
@@ -60,12 +61,12 @@ const GROUPS: GroupConfig[] = [
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { userId } = useUser();
+  const { userId, displayName, email, avatarUrl } = useUser();
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState(today);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [plants, setPlants] = useState<Plant[]>([]);
-  const [taskDays, setTaskDays] = useState<Set<number>>(new Set());
+  const [taskDays, setTaskDays] = useState<Set<string>>(new Set());
   const [loadingData, setLoadingData] = useState(true);
   const [headerHeight, setHeaderHeight] = useState(insets.top + 100);
 
@@ -299,7 +300,17 @@ export default function HomeScreen() {
                 onPress={() => router.push('/profile' as any)}
                 activeOpacity={0.85}
               >
-                <Text style={styles.avatarText}>FG</Text>
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+                ) : (
+                  <Text style={styles.avatarText}>
+                    {displayName
+                      ? displayName.slice(0, 2).toUpperCase()
+                      : email
+                        ? email.slice(0, 2).toUpperCase()
+                        : '?'}
+                  </Text>
+                )}
               </TouchableOpacity>
             }
           />
@@ -356,7 +367,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarImg: { width: 40, height: 40, borderRadius: 20 },
   avatarText: {
     fontFamily: FontFamily.calendarBold,
     fontSize: 14,

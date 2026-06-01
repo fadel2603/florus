@@ -12,16 +12,18 @@ import {
   TextInput,
   Alert,
   Keyboard,
-  TouchableWithoutFeedback,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontFamily } from '@/constants/fonts';
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from 'react-native';
+import GlassButton from '@/components/ui/GlassButton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ANTHROPIC_API_KEY, AI_MODEL, SYSTEM_PROMPT } from '@/constants/api';
+import { AI_MODEL, SYSTEM_PROMPT } from '@/constants/api';
+import { callClaude } from '@/lib/ai';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // Lazy load — not available in Expo Go, requires native build
 let SpeechModule: any = null;
@@ -38,7 +40,11 @@ import AIScanCamera from '@/components/ai/AIScanCamera';
 const { height: SCREEN_H } = Dimensions.get('window');
 const DISMISS_THRESHOLD = 100;
 
+const CHAT_KEY = (plantId: string) => `@florus_chat_${plantId}`;
+const MAX_HISTORY = 60;
+
 type PlantContext = {
+  id?: string;
   name: string;
   species: string;
   image: string;
@@ -52,8 +58,6 @@ type Props = {
   plantContext?: PlantContext;
   onOpenCamera?: (onPhoto: (uri: string) => void) => void;
   onOpenScanCamera?: () => void;
-  /** "modal" (default): slide-up overlay with handle and close button.
-   *  "screen": renders as a plain screen — no animation, no modal, tab bar stays visible. */
   mode?: 'modal' | 'screen';
 };
 
@@ -76,7 +80,21 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  // ── Voice recognition events (no-op if native module unavailable) ──
+  // Load persisted chat history when plant changes
+  useEffect(() => {
+    if (!plantContext?.id) { setMessages([]); return; }
+    AsyncStorage.getItem(CHAT_KEY(plantContext.id)).then(raw => {
+      setMessages(raw ? (JSON.parse(raw) as ChatMessage[]) : []);
+    }).catch(() => setMessages([]));
+  }, [plantContext?.id]);
+
+  // Persist messages after each exchange (plant chats only)
+  useEffect(() => {
+    if (!plantContext?.id || messages.length === 0) return;
+    AsyncStorage.setItem(CHAT_KEY(plantContext.id), JSON.stringify(messages.slice(-MAX_HISTORY)));
+  }, [messages, plantContext?.id]);
+
+  // ── Voice recognition events ──
   useEffect(() => {
     if (!SpeechModule) return;
     const subs = [
@@ -119,7 +137,6 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
       useNativeDriver: true,
     }).start(() => {
       setInput('');
-      setMessages([]);
       setPendingImage(null);
       onClose();
       onComplete?.();
@@ -180,13 +197,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
       > = [];
 
       if (userMsg.imageUri) {
-        const blob = await fetch(userMsg.imageUri).then(r => r.blob());
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
+        const base64 = await FileSystem.readAsStringAsync(userMsg.imageUri, { encoding: 'base64' });
         currentContent.push({
           type: 'image',
           source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
@@ -198,32 +209,18 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
         text: text || (userMsg.imageUri ? "What is this plant?" : ''),
       });
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: AI_MODEL,
-          max_tokens: 1024,
-          system: plantContext
-            ? `${SYSTEM_PROMPT}\n\nContexte: L'utilisateur consulte sa plante "${plantContext.name}" (${plantContext.species})${plantContext.location ? `, emplacement ${plantContext.location === 'outdoor' ? 'extérieur' : 'intérieur'}` : ''}${plantContext.waterFrequency ? `, arrosage : ${plantContext.waterFrequency}` : ''}. Réponds de façon ciblée sur cette plante.`
-            : SYSTEM_PROMPT,
-          messages: [
-            ...priorMessages,
-            { role: 'user', content: currentContent },
-          ],
-        }),
+      const data = await callClaude({
+        model: AI_MODEL,
+        max_tokens: 1024,
+        system: plantContext
+          ? `${SYSTEM_PROMPT}\n\nContexte: L'utilisateur consulte sa plante "${plantContext.name}" (${plantContext.species})${plantContext.location ? `, emplacement ${plantContext.location === 'outdoor' ? 'extérieur' : 'intérieur'}` : ''}${plantContext.waterFrequency ? `, arrosage : ${plantContext.waterFrequency}` : ''}. Réponds de façon ciblée sur cette plante.`
+          : SYSTEM_PROMPT,
+        messages: [
+          ...priorMessages,
+          { role: 'user', content: currentContent },
+        ],
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error?.message ?? `Erreur ${res.status}`);
-      }
-
-      const data = await res.json();
       const aiText = data?.content?.[0]?.text ?? "Désolé, je n'ai pas pu répondre.";
       setMessages(prev => [
         ...prev,
@@ -271,24 +268,18 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
 
   const hasMessages = messages.length > 0 || loading;
 
-  const sharedContent = (
+  const chatContent = (
     <>
-      <BlurView intensity={88} tint="systemUltraThinMaterialLight" style={StyleSheet.absoluteFill} />
-
-      <LinearGradient
-        colors={['transparent', 'rgba(90,180,20,0.22)', 'rgba(90,180,20,0.60)']}
-        locations={[0, 0.42, 1]}
-        start={{ x: 0.35, y: 0 }}
-        end={{ x: 0.35, y: 1 }}
-        style={styles.greenGlow}
-        pointerEvents="none"
-      />
-
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View style={styles.contentArea}>
         {plantContext && (
-          <View style={styles.plantBannerWrap}>
+          <TouchableOpacity
+            style={styles.plantBannerWrap}
+            onPress={Keyboard.dismiss}
+            activeOpacity={1}
+          >
             <View style={styles.plantBanner}>
+              <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+              <View style={[StyleSheet.absoluteFill, styles.plantBannerFill]} />
               <Image source={{ uri: plantContext.image }} style={styles.plantThumb} />
               <View style={styles.plantBannerText}>
                 <Text style={styles.plantBannerName}>{plantContext.name}</Text>
@@ -301,7 +292,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
                 )}
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
 
         {!hasMessages && !plantContext && <AIHero />}
@@ -310,17 +301,17 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
           <ScrollView
             ref={scrollRef}
             style={styles.chatScroll}
-            contentContainerStyle={styles.chatContent}
+            contentContainerStyle={styles.chatScrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            onScrollBeginDrag={Keyboard.dismiss}
           >
             {messages.map(msg => <ChatBubble key={msg.id} message={msg} />)}
             {loading && <TypingDots />}
           </ScrollView>
         )}
       </View>
-      </TouchableWithoutFeedback>
 
       <ChatInput
         input={input}
@@ -339,6 +330,7 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
         }
         placeholder={plantContext ? `Une question sur ${plantContext.name} ?` : 'Une question ?'}
         prominent={mode === 'screen'}
+        glass={mode === 'modal'}
       />
 
       <AIScanCamera
@@ -353,31 +345,41 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
     </>
   );
 
-  // ── Screen mode: plain screen, tab bar stays visible, no animation ──
+  // ── Screen mode ──
   if (mode === 'screen') {
     return (
       <View style={styles.screenRoot}>
-        {sharedContent}
+        <Image source={require('../assets/ai-bg.jpg')} style={styles.aiBg} resizeMode="cover" />
+        {chatContent}
       </View>
     );
   }
 
-  // ── Modal mode: slide-up overlay with handle and close button ──
+  // ── Modal mode : iOS 26 Liquid Glass ──
   if (!visible) return null;
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={() => dismiss()} statusBarTranslucent>
-      <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateY }] }]}>
+      <View style={[StyleSheet.absoluteFill, styles.modalScrim]} pointerEvents="none" />
+
+      <Animated.View style={[StyleSheet.absoluteFill, styles.modalRoot, { transform: [{ translateY }] }]}>
+
+        <BlurView intensity={68} tint="systemUltraThinMaterialLight" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, styles.modalBgFill]} />
 
         <View {...panResponder.panHandlers} style={[styles.dragZone, { paddingTop: insets.top + 6 }]}>
           <View style={styles.handle} />
         </View>
 
-        <TouchableOpacity style={[styles.closeBtn, { top: insets.top + 8 }]} onPress={() => dismiss()} activeOpacity={0.7}>
-          <Ionicons name="close" size={16} color="rgba(60,60,67,0.7)" />
-        </TouchableOpacity>
+        <GlassButton
+          size={38}
+          onPress={() => dismiss()}
+          style={{ position: 'absolute', top: insets.top + 8, left: 18, zIndex: 20 }}
+        >
+          <Ionicons name="close" size={16} color="rgba(60,60,67,0.75)" />
+        </GlassButton>
 
-        {sharedContent}
+        {chatContent}
 
       </Animated.View>
     </Modal>
@@ -385,100 +387,33 @@ export default function AISheet({ visible, onClose, plantContext, onOpenCamera, 
 }
 
 const styles = StyleSheet.create({
-  screenRoot: {
-    flex: 1,
-    overflow: 'hidden',
-  },
-  greenGlow: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: SCREEN_H * 0.58,
-  },
-  dragZone: {
-    alignItems: 'center',
-    paddingBottom: 12,
-  },
-  handle: {
-    width: 36,
-    height: 5,
-    borderRadius: 100,
-    backgroundColor: 'rgba(60,60,67,0.18)',
-  },
-  closeBtn: {
-    position: 'absolute',
-    left: 18,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.75)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.10,
-    shadowRadius: 4,
-    elevation: 2,
-    zIndex: 10,
-  },
-  contentArea: {
-    flex: 1,
-  },
-  chatScroll: {
-    flex: 1,
-    marginTop: 8,
-  },
-  chatContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
+  screenRoot: { flex: 1, overflow: 'hidden' },
 
-  plantBannerWrap: {
-    marginHorizontal: 16,
-    marginTop: 52,
-    marginBottom: 4,
-  },
+  modalScrim: { backgroundColor: 'rgba(0,0,0,0.18)' },
+  modalRoot: { overflow: 'hidden', borderTopLeftRadius: 22, borderTopRightRadius: 22 },
+  modalBgFill: { backgroundColor: 'rgba(255,255,255,0.18)' },
+
+  aiBg: { ...StyleSheet.absoluteFillObject },
+
+  dragZone: { alignItems: 'center', paddingBottom: 12 },
+  handle: { width: 36, height: 5, borderRadius: 100, backgroundColor: 'rgba(60,60,67,0.22)' },
+
+  contentArea: { flex: 1 },
+  chatScroll: { flex: 1, marginTop: 8 },
+  chatScrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
+
+  plantBannerWrap: { marginHorizontal: 16, marginTop: 52, marginBottom: 4 },
   plantBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderRadius: 18,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.90)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderRadius: 18, padding: 12, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.80)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 10,
   },
-  plantThumb: {
-    width: 52,
-    height: 52,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-  },
-  plantBannerText: {
-    flex: 1,
-    gap: 2,
-  },
-  plantBannerName: {
-    fontFamily: FontFamily.headerBold,
-    fontSize: 16,
-    color: '#1a1a1a',
-  },
-  plantBannerSpecies: {
-    fontFamily: FontFamily.bodyRegular,
-    fontSize: 12,
-    color: 'rgba(0,0,0,0.45)',
-    fontStyle: 'italic',
-  },
-  plantBannerMeta: {
-    fontFamily: FontFamily.calendarMedium,
-    fontSize: 11,
-    color: 'rgba(0,0,0,0.38)',
-    marginTop: 3,
-  },
+  plantBannerFill: { backgroundColor: 'rgba(255,255,255,0.55)', borderRadius: 18 },
+  plantThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.08)' },
+  plantBannerText: { flex: 1, gap: 2 },
+  plantBannerName: { fontFamily: FontFamily.headerBold, fontSize: 16, color: '#1a1a1a' },
+  plantBannerSpecies: { fontFamily: FontFamily.bodyRegular, fontSize: 12, color: 'rgba(0,0,0,0.45)', fontStyle: 'italic' },
+  plantBannerMeta: { fontFamily: FontFamily.calendarMedium, fontSize: 11, color: 'rgba(0,0,0,0.38)', marginTop: 3 },
 });

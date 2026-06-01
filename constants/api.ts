@@ -1,10 +1,3 @@
-// EXPO_PUBLIC_* variables are loaded from .env at build time by Expo CLI.
-// They are embedded in the JS bundle (visible in the binary) — NOT a server
-// secret. For production, route Anthropic calls through a backend proxy.
-// Never hardcode keys here. Add your key to .env (already in .gitignore).
-export const ANTHROPIC_API_KEY: string =
-  process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? '';
-
 export const AI_MODEL = 'claude-sonnet-4-20250514';
 
 export const SYSTEM_PROMPT =

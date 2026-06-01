@@ -9,6 +9,8 @@ import {
   Platform,
   Animated,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { FontFamily } from '@/constants/fonts';
 
@@ -63,6 +65,8 @@ interface ChatInputProps {
   placeholder?: string;
   /** When true, renders a more prominent "Gemini-style" pill for use as a full screen */
   prominent?: boolean;
+  /** When true, renders a liquid glass AI-style pill (modal overlay context) */
+  glass?: boolean;
 }
 
 export default function ChatInput({
@@ -78,12 +82,18 @@ export default function ChatInput({
   paddingBottom,
   placeholder = 'Une question ?',
   prominent = false,
+  glass = false,
 }: ChatInputProps) {
   const hasSendable = !!input.trim() || !!pendingImage;
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.outer, { paddingBottom }, prominent && styles.outerProminent]}>
+      <View style={[
+        styles.outer,
+        { paddingBottom },
+        prominent && styles.outerProminent,
+        glass && styles.outerGlass,
+      ]}>
         {pendingImage && (
           <View style={styles.pendingRow}>
             <Image source={{ uri: pendingImage }} style={styles.pendingThumb} />
@@ -93,67 +103,83 @@ export default function ChatInput({
           </View>
         )}
 
-        <View style={[
-          styles.pill,
-          prominent && styles.pillProminent,
-          isRecording && styles.pillRecording,
-        ]}>
-          {/* Left action — camera in prominent mode, nothing in compact */}
-          {prominent && (
-            <TouchableOpacity onPress={onCamera} style={styles.leftBtn} activeOpacity={0.7}>
-              <Ionicons name="add" size={26} color="rgba(60,60,67,0.55)" />
-            </TouchableOpacity>
-          )}
-
-          <TextInput
-            ref={inputRef}
-            style={[styles.field, prominent && styles.fieldProminent]}
-            value={input}
-            onChangeText={onChangeText}
-            placeholder={isRecording ? 'Écoute en cours…' : placeholder}
-            placeholderTextColor={
-              isRecording
-                ? 'rgba(255,59,48,0.5)'
-                : prominent
-                  ? 'rgba(60,60,67,0.40)'
-                  : 'rgba(255,255,255,0.6)'
-            }
-            selectionColor="#5B9E3B"
-            returnKeyType="send"
-            onSubmitEditing={onSend}
-            editable={!isRecording}
-            multiline={prominent}
-          />
-
-          <View style={styles.icons}>
-            {hasSendable && !isRecording ? (
-              <TouchableOpacity onPress={onSend} style={styles.sendBtn} activeOpacity={0.8}>
-                <Ionicons name="arrow-up" size={20} color="#1C1C1E" />
-              </TouchableOpacity>
-            ) : (
-              <>
-                <TouchableOpacity onPress={onMic} activeOpacity={0.7}>
-                  {isRecording ? <RecordingMic /> : (
-                    <Ionicons
-                      name="mic-outline"
-                      size={24}
-                      color={prominent ? 'rgba(60,60,67,0.50)' : 'rgba(60,60,67,0.45)'}
-                    />
-                  )}
-                </TouchableOpacity>
-                {/* Camera icon only in compact mode (prominent uses the + button) */}
-                {!prominent && (
-                  <TouchableOpacity onPress={onCamera} activeOpacity={0.7}>
-                    <Ionicons name="camera-outline" size={26} color="rgba(60,60,67,0.50)" />
-                  </TouchableOpacity>
-                )}
-                {prominent && !isRecording && (
-                  <TouchableOpacity onPress={() => {}} activeOpacity={0.7}>
-                    <WaveformBars />
-                  </TouchableOpacity>
-                )}
-              </>
+        {/* ── Glass pill wrapper (shadow outside, blur inside) ── */}
+        <View style={[glass && styles.pillGlassShadow]}>
+          <View style={[
+            styles.pill,
+            prominent && styles.pillProminent,
+            glass && styles.pillGlass,
+            isRecording && styles.pillRecording,
+          ]}>
+            {/* Liquid glass layers */}
+            {glass && Platform.OS === 'ios' && (
+              <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
             )}
+            {glass && (
+              <LinearGradient
+                colors={['rgba(255,255,255,0.72)', 'rgba(240,252,245,0.68)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+            )}
+
+            {/* Left action — camera in prominent mode, + in glass mode */}
+            {(prominent || glass) && (
+              <TouchableOpacity onPress={onCamera} style={styles.leftBtn} activeOpacity={0.7}>
+                <Ionicons name="add" size={24} color="rgba(60,60,67,0.55)" />
+              </TouchableOpacity>
+            )}
+
+            <TextInput
+              ref={inputRef}
+              style={[styles.field, (prominent || glass) && styles.fieldProminent]}
+              value={input}
+              onChangeText={onChangeText}
+              placeholder={isRecording ? 'Écoute en cours…' : placeholder}
+              placeholderTextColor={
+                isRecording
+                  ? 'rgba(255,59,48,0.5)'
+                  : (prominent || glass)
+                    ? 'rgba(60,60,67,0.38)'
+                    : 'rgba(255,255,255,0.6)'
+              }
+              selectionColor="#5B9E3B"
+              returnKeyType="send"
+              onSubmitEditing={onSend}
+              editable={!isRecording}
+              multiline={prominent || glass}
+            />
+
+            <View style={styles.icons}>
+              {hasSendable && !isRecording ? (
+                <TouchableOpacity onPress={onSend} style={styles.sendBtn} activeOpacity={0.8}>
+                  <Ionicons name="arrow-up" size={18} color="#1C1C1E" />
+                </TouchableOpacity>
+              ) : (
+                <>
+                  <TouchableOpacity onPress={onMic} activeOpacity={0.7}>
+                    {isRecording ? <RecordingMic /> : (
+                      <Ionicons
+                        name="mic-outline"
+                        size={22}
+                        color="rgba(60,60,67,0.50)"
+                      />
+                    )}
+                  </TouchableOpacity>
+                  {!prominent && !glass && (
+                    <TouchableOpacity onPress={onCamera} activeOpacity={0.7}>
+                      <Ionicons name="camera-outline" size={26} color="rgba(60,60,67,0.50)" />
+                    </TouchableOpacity>
+                  )}
+                  {prominent && !isRecording && (
+                    <TouchableOpacity onPress={() => {}} activeOpacity={0.7}>
+                      <WaveformBars />
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+            </View>
           </View>
         </View>
       </View>
@@ -167,6 +193,10 @@ const styles = StyleSheet.create({
   },
   outerProminent: {
     paddingHorizontal: 16,
+  },
+  outerGlass: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
   },
   pendingRow: {
     flexDirection: 'row',
@@ -183,15 +213,15 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
 
-  // ── Compact pill (modal mode) ──
+  // ── Compact pill (fallback, not used for glass or prominent) ──
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 80,
+    height: 52,
     borderRadius: 100,
     backgroundColor: 'rgba(255,255,255,0.20)',
-    paddingLeft: 32,
-    paddingRight: 24,
+    paddingLeft: 20,
+    paddingRight: 16,
   },
   pillRecording: {
     backgroundColor: 'rgba(255,59,48,0.08)',
@@ -209,6 +239,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.10,
     shadowRadius: 12,
     elevation: 4,
+  },
+
+  // ── Glass pill (modal mode — iOS 26 Liquid Glass AI) ──
+  pillGlassShadow: {
+    shadowColor: '#2D6A4F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  pillGlass: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 54,
+    borderRadius: 27,
+    overflow: 'hidden',
+    borderWidth: 1.2,
+    borderColor: 'rgba(255,255,255,0.82)',
+    paddingLeft: 4,
+    paddingRight: 12,
+    paddingVertical: 8,
+    backgroundColor: Platform.OS === 'android' ? 'rgba(255,255,255,0.88)' : 'transparent',
   },
 
   leftBtn: {

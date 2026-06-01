@@ -71,7 +71,7 @@ function dateToWeekIndex(date: Date): number {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-type Props = { onDateChange?: (date: Date) => void; value?: Date; taskDays?: Set<number> };
+type Props = { onDateChange?: (date: Date) => void; value?: Date; taskDays?: Set<string> };
 
 export default function CalendarStrip({ onDateChange, value, taskDays }: Props) {
   const listRef = useRef<FlatList>(null);
@@ -126,7 +126,7 @@ export default function CalendarStrip({ onDateChange, value, taskDays }: Props) 
       {week.map((d, i) => {
         const active   = isSameDay(d, selected);
         const isToday_ = isSameDay(d, todayDate);
-        const hasTask  = taskDays?.has(d.getDay()) ?? false;
+        const hasTask  = taskDays?.has(d.toISOString().slice(0, 10)) ?? false;
 
         let indicator: React.ReactElement;
         if (active) {

@@ -134,19 +134,10 @@ const markdownStyles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#FFFFFF',
   },
-  bullet_list: {
-    marginVertical: 2,
-  },
-  ordered_list: {
-    marginVertical: 2,
-  },
-  list_item: {
-    marginVertical: 1,
-  },
-  bullet_list_icon: {
-    color: '#B5F15B',
-    marginTop: 5,
-  },
+  bullet_list: { marginVertical: 2 },
+  ordered_list: { marginVertical: 2 },
+  list_item: { marginVertical: 1 },
+  bullet_list_icon: { color: '#B5F15B', marginTop: 5 },
   ordered_list_icon: {
     fontFamily: FontFamily.bodyRegular,
     fontSize: 15,
@@ -172,9 +163,7 @@ const markdownStyles = StyleSheet.create({
     fontSize: 13,
     color: '#B5F15B',
   },
-  paragraph: {
-    marginVertical: 2,
-  },
+  paragraph: { marginVertical: 2 },
   hr: {
     backgroundColor: 'rgba(255,255,255,0.15)',
     height: 1,
@@ -188,25 +177,13 @@ const markdownStyles = StyleSheet.create({
     paddingVertical: 4,
     marginVertical: 4,
   },
-  link: {
-    color: '#B5F15B',
-    textDecorationLine: 'underline',
-  },
+  link: { color: '#B5F15B', textDecorationLine: 'underline' },
 });
 
 const styles = StyleSheet.create({
-  row: {
-    marginBottom: 8,
-  },
-  userRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  aiRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-  },
+  row: { marginBottom: 8 },
+  userRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  aiRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   avatar: {
     width: 28,
     height: 28,
@@ -233,12 +210,6 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.bodyRegular,
     fontSize: 15,
     color: '#1C1C1E',
-    lineHeight: 21,
-  },
-  aiText: {
-    fontFamily: FontFamily.bodyRegular,
-    fontSize: 15,
-    color: '#FFFFFF',
     lineHeight: 21,
   },
   photoThumb: {

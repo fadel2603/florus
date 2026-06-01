@@ -27,15 +27,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
 import { Plant, Task, HistoryEvent } from '@/constants/data';
+import * as ImagePicker from 'expo-image-picker';
 import { fetchPlantById, updatePlantDb, deletePlant } from '@/lib/db/plants';
 import { fetchHistory, insertHistoryEvent } from '@/lib/db/history';
 import { insertTasks, deletePlantTasks } from '@/lib/db/tasks';
 import { cancelTaskNotifications } from '@/lib/notifications';
+import { fetchPlantPhotos, uploadPlantPhoto, deletePlantPhoto, PlantPhoto } from '@/lib/db/photos';
 import { useUser } from '@/context/UserContext';
-import { ANTHROPIC_API_KEY, AI_MODEL } from '@/constants/api';
+import { AI_MODEL } from '@/constants/api';
+import { callClaude } from '@/lib/ai';
+import * as FileSystem from 'expo-file-system/legacy';
 import Button from '@/components/ui/Button';
 import TimelineItem from '@/components/ui/TimelineItem';
 import AISheet from '@/components/AISheet';
+import GlassButton from '@/components/ui/GlassButton';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,11 +54,6 @@ type ScanDiagnosis = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MOCK_PHOTOS = [
-  'https://images.unsplash.com/photo-1545241047-6083a3684587?w=200',
-  'https://images.unsplash.com/photo-1512428813834-c702c7702b78?w=200',
-  'https://images.unsplash.com/photo-1509423350716-97f9360b4e09?w=200',
-];
 
 const SCAN_STEPS = [
   'Analyse en cours...',
@@ -94,17 +94,7 @@ function formatHistoryDate(iso: string): string {
 }
 
 async function photoToBase64(uri: string): Promise<string> {
-  const blob = await fetch(uri).then(r => r.blob());
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const res = reader.result as string;
-      const comma = res.indexOf(',');
-      resolve(comma >= 0 ? res.slice(comma + 1) : res);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  return FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
 }
 
 async function runScanAnalysis(
@@ -121,19 +111,13 @@ async function runScanAnalysis(
       `{"diagnosis":"healthy|warning|critical","summary":"one sentence in French","issues":["issue in French"],"recommendations":["action in French"],"urgentTask":{"type":"water|observe|treat|fertilize","title":"title in French","daysFromNow":2}}\n` +
       `Set urgentTask to null if diagnosis is healthy.`;
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: AI_MODEL, max_tokens: 512, system: systemPrompt,
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-          { type: 'text', text: `Analyze this photo of my ${plantName}.` },
-        ]}],
-      }),
+    const data = await callClaude({
+      model: AI_MODEL, max_tokens: 512, system: systemPrompt,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+        { type: 'text', text: `Analyze this photo of my ${plantName}.` },
+      ]}],
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
     const text: string = data?.content?.[0]?.text ?? '';
     const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     return JSON.parse(match ? match[1].trim() : text.trim()) as ScanDiagnosis;
@@ -154,20 +138,14 @@ async function askPlantQuestion(
   const ctx = diagnosis
     ? `Diagnostic: ${diagnosis.summary}. Problèmes: ${diagnosis.issues.join(', ') || 'aucun'}.`
     : '';
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: AI_MODEL, max_tokens: 400,
-      system: `Tu es Florus, expert botaniste. Cette photo montre un(e) ${plantName} (${species}). ${ctx} Réponds à la question de façon concise en français.`,
-      messages: [{ role: 'user', content: [
-        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-        { type: 'text', text: question },
-      ]}],
-    }),
+  const data = await callClaude({
+    model: AI_MODEL, max_tokens: 400,
+    system: `Tu es Florus, expert botaniste. Cette photo montre un(e) ${plantName} (${species}). ${ctx} Réponds à la question de façon concise en français.`,
+    messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+      { type: 'text', text: question },
+    ]}],
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
   return data?.content?.[0]?.text ?? '';
 }
 
@@ -181,6 +159,8 @@ export default function PlantDetailScreen() {
 
   const [plant, setPlant] = useState<Plant | null>(null);
   const [history, setHistory] = useState<HistoryEvent[]>([]);
+  const [plantPhotos, setPlantPhotos] = useState<PlantPhoto[]>([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null);
   const [aiVisible, setAiVisible] = useState(false);
@@ -256,9 +236,11 @@ export default function PlantDetailScreen() {
       Promise.all([
         fetchPlantById(userId, id),
         fetchHistory(userId, id),
-      ]).then(([p, h]) => {
+        fetchPlantPhotos(id),
+      ]).then(([p, h, photos]) => {
         if (p) setPlant(p);
         setHistory(h);
+        setPlantPhotos(photos);
       });
     }, [userId, id])
   );
@@ -507,6 +489,52 @@ export default function PlantDetailScreen() {
     }
   };
 
+  // ── Galerie ──────────────────────────────────────────────────────────────────
+
+  const handleAddPhoto = () => {
+    Alert.alert('Ajouter une photo', undefined, [
+      {
+        text: 'Prendre une photo',
+        onPress: async () => {
+          const { granted } = await ImagePicker.requestCameraPermissionsAsync();
+          if (!granted) { Alert.alert('Permission refusée'); return; }
+          const result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true, aspect: [4, 3] });
+          if (!result.canceled && result.assets[0]) uploadPhoto(result.assets[0].uri);
+        },
+      },
+      {
+        text: 'Choisir dans la galerie',
+        onPress: async () => {
+          const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, aspect: [4, 3] });
+          if (!result.canceled && result.assets[0]) uploadPhoto(result.assets[0].uri);
+        },
+      },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
+  };
+
+  const uploadPhoto = async (uri: string) => {
+    if (!userId || !plant) return;
+    setUploadingPhoto(true);
+    const photo = await uploadPlantPhoto(userId, plant.id, uri);
+    if (photo) setPlantPhotos(prev => [photo, ...prev]);
+    setUploadingPhoto(false);
+  };
+
+  const handleDeletePhoto = (photo: PlantPhoto) => {
+    Alert.alert('Supprimer la photo ?', 'Cette action est irréversible.', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          await deletePlantPhoto(photo.id, photo.storagePath);
+          setPlantPhotos(prev => prev.filter(p => p.id !== photo.id));
+        },
+      },
+    ]);
+  };
+
   // ─── Derived ─────────────────────────────────────────────────────────────────
 
   const scanSpin = scanSpinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
@@ -573,7 +601,9 @@ export default function PlantDetailScreen() {
                 <Text style={styles.species}>{plant.species}</Text>
                 <Text style={styles.meta}>
                   {plant.location === 'outdoor' ? 'Extérieur' : 'Intérieur'} ·{' '}
-                  <Text style={styles.metaPhotos} onPress={() => setGalleryOpen(true)}>3 📸</Text>
+                  <Text style={styles.metaPhotos} onPress={() => setGalleryOpen(true)}>
+                    {plantPhotos.length > 0 ? `${plantPhotos.length} 📸` : '+ Photo'}
+                  </Text>
                 </Text>
               </View>
             </View>
@@ -590,7 +620,7 @@ export default function PlantDetailScreen() {
                 activeOpacity={0.82}
               >
                 <Ionicons name="sparkles" size={17} color={Colors.textDark} />
-                <Text style={styles.aiQuestionBtnLabel}>Poser une question</Text>
+                <Text style={styles.aiQuestionBtnLabel}>Une question sur cette plante ?</Text>
               </TouchableOpacity>
             </LinearGradient>
 
@@ -648,41 +678,64 @@ export default function PlantDetailScreen() {
 
       {/* ── STICKY NAV BUTTONS (always on top) ── */}
       <View style={[styles.stickyNav, { top: insets.top + 10 }]} pointerEvents="box-none">
-        <View style={styles.heroBtnShadow}>
-          <View style={styles.heroBtnGlass}>
-            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
-            <View style={[StyleSheet.absoluteFill, styles.heroBtnTint]} />
-            <TouchableOpacity style={styles.heroBtnTouch} onPress={() => router.back()} activeOpacity={0.85}>
-              <Ionicons name="chevron-back" size={22} color={Colors.textDark} />
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.heroBtnShadow}>
-          <View style={styles.heroBtnGlass}>
-            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
-            <View style={[StyleSheet.absoluteFill, styles.heroBtnTint]} />
-            <TouchableOpacity style={styles.heroBtnTouch} onPress={() => setEditVisible(true)} activeOpacity={0.85}>
-              <Ionicons name="pencil" size={17} color={Colors.textDark} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <GlassButton size={44} onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={22} color={Colors.textDark} />
+        </GlassButton>
+        <GlassButton size={44} onPress={() => setEditVisible(true)}>
+          <Ionicons name="pencil" size={17} color={Colors.textDark} />
+        </GlassButton>
       </View>
 
       {/* ── GALLERY MODAL ── */}
       <Modal visible={galleryOpen} transparent animationType="slide" onRequestClose={() => setGalleryOpen(false)}>
         <View style={styles.galleryModal}>
           <View style={styles.galleryModalHeader}>
-            <Text style={styles.galleryModalTitle}>Mes photos</Text>
+            <Text style={styles.galleryModalTitle}>
+              Mes photos{plantPhotos.length > 0 ? ` (${plantPhotos.length})` : ''}
+            </Text>
             <TouchableOpacity onPress={() => setGalleryOpen(false)} style={styles.iconBtn}>
               <Ionicons name="close" size={22} color={Colors.textDark} />
             </TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={styles.galleryGrid}>
-            {MOCK_PHOTOS.map((uri, i) => (
-              <TouchableOpacity key={i} onPress={() => setFullscreenPhoto(uri)} activeOpacity={0.85}>
-                <Image source={{ uri }} style={styles.galleryGridThumb} />
+
+          <ScrollView contentContainerStyle={styles.galleryGrid} showsVerticalScrollIndicator={false}>
+            {/* ── Bouton ajouter ── */}
+            <TouchableOpacity
+              style={styles.galleryAddBtn}
+              onPress={handleAddPhoto}
+              activeOpacity={0.75}
+              disabled={uploadingPhoto}
+            >
+              {uploadingPhoto ? (
+                <ActivityIndicator size="small" color={Colors.primaryDark} />
+              ) : (
+                <>
+                  <Ionicons name="add" size={28} color={Colors.primaryDark} />
+                  <Text style={styles.galleryAddLabel}>Ajouter</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {/* ── Photos réelles ── */}
+            {plantPhotos.map(photo => (
+              <TouchableOpacity
+                key={photo.id}
+                onPress={() => setFullscreenPhoto(photo.url)}
+                onLongPress={() => handleDeletePhoto(photo)}
+                activeOpacity={0.85}
+                delayLongPress={500}
+              >
+                <Image source={{ uri: photo.url }} style={styles.galleryGridThumb} />
               </TouchableOpacity>
             ))}
+
+            {/* ── État vide ── */}
+            {plantPhotos.length === 0 && !uploadingPhoto && (
+              <View style={styles.galleryEmpty}>
+                <Ionicons name="images-outline" size={40} color={Colors.textMuted} />
+                <Text style={styles.galleryEmptyText}>Ajoute ta première photo !</Text>
+              </View>
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -956,6 +1009,7 @@ export default function PlantDetailScreen() {
         visible={aiVisible}
         onClose={() => setAiVisible(false)}
         plantContext={{
+          id: plant.id,
           name: plant.name,
           species: plant.species,
           image: plant.image,
@@ -1049,31 +1103,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     zIndex: 100,
   },
-  heroBtnShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  heroBtnGlass: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-  },
-  heroBtnTint: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 22,
-  },
-  heroBtnTouch: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   badge: { position: 'absolute', right: 16, backgroundColor: Colors.orange, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
   badgeText: { fontSize: 12, fontFamily: FontFamily.labelMedium, color: Colors.white },
 
@@ -1134,6 +1163,26 @@ const styles = StyleSheet.create({
   galleryModalTitle: { fontFamily: FontFamily.headerBold, fontSize: 20, color: Colors.textDark },
   galleryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 16 },
   galleryGridThumb: { width: (SCREEN_W - 48) / 3, height: (SCREEN_W - 48) / 3, borderRadius: 12, backgroundColor: Colors.border },
+  galleryAddBtn: {
+    width: (SCREEN_W - 48) / 3,
+    height: (SCREEN_W - 48) / 3,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderWidth: 1.5,
+    borderColor: Colors.primaryDark,
+    borderStyle: 'dashed',
+  },
+  galleryAddLabel: { fontFamily: FontFamily.calendarMedium, fontSize: 11, color: Colors.primaryDark },
+  galleryEmpty: {
+    width: '100%',
+    paddingVertical: 48,
+    alignItems: 'center',
+    gap: 12,
+  },
+  galleryEmptyText: { fontFamily: FontFamily.bodyRegular, fontSize: 14, color: Colors.textMuted },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
   fullscreenImg: { width: SCREEN_W, height: SCREEN_H },

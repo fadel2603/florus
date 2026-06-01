@@ -11,7 +11,9 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { FontFamily } from '@/constants/fonts';
-import { ANTHROPIC_API_KEY, AI_MODEL, PLANT_ANALYSIS_SYSTEM_PROMPT, AIPlantAnalysis } from '@/constants/api';
+import { AI_MODEL, PLANT_ANALYSIS_SYSTEM_PROMPT, AIPlantAnalysis } from '@/constants/api';
+import { callClaude } from '@/lib/ai';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const { width: W } = Dimensions.get('window');
 
@@ -26,42 +28,21 @@ const STEP_DURATION = [1400, 1400, 1400, 800];
 
 async function analyzePhoto(photoUri: string): Promise<AIPlantAnalysis | null> {
   try {
-    const blob = await fetch(photoUri).then(r => r.blob());
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        const comma = result.indexOf(',');
-        resolve(comma >= 0 ? result.slice(comma + 1) : result);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
+    const base64 = await FileSystem.readAsStringAsync(photoUri, { encoding: 'base64' });
+
+    const data = await callClaude({
+      model: AI_MODEL,
+      max_tokens: 1024,
+      system: PLANT_ANALYSIS_SYSTEM_PROMPT,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+          { type: 'text', text: 'Analyze this plant.' },
+        ],
+      }],
     });
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        max_tokens: 1024,
-        system: PLANT_ANALYSIS_SYSTEM_PROMPT,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-            { type: 'text', text: 'Analyze this plant.' },
-          ],
-        }],
-      }),
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
     const text: string = data?.content?.[0]?.text ?? '';
     const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     const jsonStr = jsonMatch ? jsonMatch[1].trim() : text.trim();
