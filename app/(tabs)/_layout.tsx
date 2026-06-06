@@ -1,43 +1,35 @@
-import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 export default function TabLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: '#8DC93A',
-        tabBarInactiveTintColor: '#888',
-        tabBarStyle: { backgroundColor: '#fff' },
-      }}
+    <NativeTabs
+      tintColor="#8DC93A"
+      minimizeBehavior="onScrollDown"
     >
-      <Tabs.Screen
+      <NativeTabs.Trigger
         name="index"
         options={{
           title: 'Accueil',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'house' : 'house-outline'} size={24} color={color} />
-          ),
+          icon: { sf: 'house' },
+          selectedIcon: { sf: 'house.fill' },
         }}
       />
-      <Tabs.Screen
+      <NativeTabs.Trigger
         name="plants"
         options={{
           title: 'Plantes',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'leaf' : 'leaf-outline'} size={24} color={color} />
-          ),
+          icon: { sf: 'leaf' },
+          selectedIcon: { sf: 'leaf.fill' },
         }}
       />
-      <Tabs.Screen
+      <NativeTabs.Trigger
         name="scanner"
         options={{
           title: 'IA',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="sparkles" size={24} color={color} />
-          ),
+          icon: { sf: 'sparkles' },
+          selectedIcon: { sf: 'sparkles' },
         }}
       />
-    </Tabs>
+    </NativeTabs>
   );
 }
