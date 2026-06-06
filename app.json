@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -19,7 +19,8 @@
       "usesAppleSignIn": true,
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Florus utilise la reconnaissance vocale pour transcrire vos questions.",
-        "NSMicrophoneUsageDescription": "Florus utilise le micro pour transcrire vos questions."
+        "NSMicrophoneUsageDescription": "Florus utilise le micro pour transcrire vos questions.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
