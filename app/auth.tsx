@@ -85,12 +85,7 @@ export default function AuthScreen() {
     setError(null);
   };
 
-  const continueAsGuest = async () => {
-    await AsyncStorage.setItem('@florus_guest', 'true');
-    goHome();
-  };
-
-  const isLoading = loading !== null;
+const isLoading = loading !== null;
 
   return (
     <LinearGradient colors={['#FFFFFF', Colors.background]} style={styles.root}>
@@ -259,12 +254,7 @@ export default function AuthScreen() {
             </View>
           )}
 
-          {/* Guest */}
-          <TouchableOpacity onPress={continueAsGuest} activeOpacity={0.7} style={styles.guestBtn}>
-            <Text style={styles.guestText}>Continuer sans compte</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.legalText}>
+<Text style={styles.legalText}>
             En continuant, tu acceptes nos{' '}
             <Text style={styles.legalLink}>Conditions d'utilisation</Text>
             {' '}et notre{' '}
