@@ -53,14 +53,12 @@ export default function OnboardingScreen() {
 
   const finish = async () => {
     await AsyncStorage.setItem('@florus_onboarded', 'true');
-    router.replace('/(tabs)/plants' as any);
-    // Small delay so the tab is ready before pushing
-    setTimeout(() => router.push('/add-plant/camera' as any), 300);
+    router.replace('/auth' as any);
   };
 
   const skip = async () => {
     await AsyncStorage.setItem('@florus_onboarded', 'true');
-    router.replace('/(tabs)' as any);
+    router.replace('/auth' as any);
   };
 
   const goNext = () => {

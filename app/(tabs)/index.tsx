@@ -80,8 +80,7 @@ export default function HomeScreen() {
 
       const { data: { session } } = await supabase.auth.getSession();
       const hasEmail = !!session?.user?.email;
-      const isGuest = await AsyncStorage.getItem('@florus_guest') === 'true';
-      if (!hasEmail && !isGuest) router.replace('/auth' as any);
+      if (!hasEmail) router.replace('/auth' as any);
     })();
   }, []);
 
