@@ -68,6 +68,21 @@ export async function uploadPlantPhoto(
   };
 }
 
+export async function uploadProfileImage(userId: string, uri: string): Promise<string | null> {
+  const path = `${userId}/profile_${Date.now()}.jpg`;
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  const { error } = await supabase.storage
+    .from('plant-photos')
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+
+  if (error) { console.warn('[Florus] uploadProfileImage:', error.message); return null; }
+
+  const { data: { publicUrl } } = supabase.storage.from('plant-photos').getPublicUrl(path);
+  return publicUrl;
+}
+
 export async function deletePlantPhoto(photoId: string, storagePath: string): Promise<void> {
   await supabase.storage.from('plant-photos').remove([storagePath]);
   const { error } = await supabase.from('plant_photos').delete().eq('id', photoId);

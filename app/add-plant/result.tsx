@@ -21,6 +21,7 @@ import Button from '@/components/ui/Button';
 import { AIPlantAnalysis } from '@/constants/api';
 import { Plant, Task } from '@/constants/data';
 import { insertPlant } from '@/lib/db/plants';
+import { uploadProfileImage } from '@/lib/db/photos';
 import { insertTasks } from '@/lib/db/tasks';
 import { insertHistoryEvent } from '@/lib/db/history';
 import { scheduleTaskNotification } from '@/lib/notifications';
@@ -142,10 +143,12 @@ export default function ResultScreen() {
   const handleConfirm = async (customName: string, customLocation: 'Intérieur' | 'Extérieur') => {
     if (!analysis || !userId) return;
 
+    const imageUrl = photo ? (await uploadProfileImage(userId, photo)) ?? photo : '';
+
     const newPlant: Omit<Plant, 'id'> = {
       name: customName,
       species: analysis.species,
-      image: photo ?? '',
+      image: imageUrl,
       waterFrequency: `Tous les ${analysis.wateringFrequency} jours`,
       lastWatered: 'Jamais',
       health: analysis.health === 'healthy' ? 'good' : analysis.health,
