@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -31,16 +32,17 @@ export async function signInWithEmail(email: string, password: string) {
 
 export async function signInWithGoogle(): Promise<{ error: string | null }> {
   try {
+    const redirectTo = Linking.createURL('/');
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'florus://',
+        redirectTo,
         skipBrowserRedirect: true,
       },
     });
     if (error || !data.url) return { error: error?.message ?? 'Erreur Google' };
 
-    const result = await WebBrowser.openAuthSessionAsync(data.url, 'florus://');
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
     if (result.type !== 'success') return { error: null }; // user cancelled
 
     await supabase.auth.exchangeCodeForSession(result.url);
